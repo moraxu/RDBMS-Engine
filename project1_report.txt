@@ -1,7 +1,7 @@
 1. Basic information
 Student ID : 29249325 (mguzek), 93209704  (yuzhoug1)
 Student Name : Michal Guzek, Yuzhou Guo
-OS (bit) : 14.04
+OS (bit) : Ubuntu 14.04 64bit
 gcc version : 5.5.0
 
 
