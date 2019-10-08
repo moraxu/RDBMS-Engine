@@ -20,7 +20,7 @@ We implemented page format according to the instructions in the textbook. End of
 4. Implementation Detail
 - Other implementation details goes here.
 
-We used a lot of reinterpret_cast's, unfortunately we didn't have time to replace at least half of them by meaningful references to those memory locations, because we're writing this report 6 minutes before the deadline.
+We used a lot of reinterpret_cast's, unfortunately we didn't have time to replace at least half of them by meaningful references to those memory locations, because we're writing this report 6 minutes before the deadline. The same goes for splitting functions into multiple ones so that one function could fit on the screen witout scrolling, as per Clean Code recommendations :) We're aware of that, but didn't have enough time for the clean up.
 
 5. Other (optional)
 - Freely use this section to tell us about things that are related to the project 1, but not related to the other sections (optional)
