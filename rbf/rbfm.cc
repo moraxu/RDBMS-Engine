@@ -36,7 +36,6 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
     return PagedFileManager::instance().closeFile(fileHandle);
 }
 
-//TRZEBA POWSTAWIAC REFERENCJE DO reinterpret_castow bo inaczej mnie szlag trafi
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                         const void *data, RID &rid) {
     std::vector<byte> recordFormat;
@@ -173,7 +172,6 @@ RC RecordBasedFileManager::insertRecordOnPage(FileHandle &fileHandle, const std:
 
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                       const RID &rid, void *data) {
-    //proste, bedziemy iterowac po tych fieldsNO+1 fields offsetach i sprawdzac czy wsk. poczatku pola pokazuje na to samo co wsk. konca pola -> jak tak, to null.
     byte page[PAGE_SIZE];
     RC rcode = fileHandle.readPage(rid.pageNum, page);
     if(rcode != 0) {
