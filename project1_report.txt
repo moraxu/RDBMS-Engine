@@ -1,23 +1,28 @@
 1. Basic information
-Student ID : 
-Student Name : 
-OS (bit) :
-gcc version :
+Student ID : 29249325 (mguzek), 93209704  (yuzhoug1)
+Student Name : Michal Guzek, Yuzhou Guo
+OS (bit) : 14.04
+gcc version : 5.5.0
 
 
 2. Internal Record Format
 - Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that you haven't implemented this feature.
 - Describe how you store a VarChar field.
+1) Our record format design follows the one mentioned in the textbook - it is an array of field offsets. Every field offset points to the corresponding record field (in terms of byte offset from the beginning of the page). That way, to refer to n-th field, we can skip to n-th field offset in O(1) and then look up the corresponding field also in O(1). If the record contains null(s), the adjacent field offsets point to the same location on the page. We also included field offset to the end of the record, as per instructions in the textbook.
 
+2) We first store its size as "unsigned" and then follows the actual content.
 
 3. Page Format
 - Show your page format design
 
+We implemented page format according to the instructions in the textbook. End of the page contains directory of slots which grows in the same direction as the space occupied by records inserted, resulting in free space being coalesced in the middle of a page. 
 
 4. Implementation Detail
 - Other implementation details goes here.
 
+We used a lot of reinterpret_cast's, unfortunately we didn't have time to replace at least half of them by meaningful references to those memory locations, because we're writing this report 6 minutes before the deadline.
 
 5. Other (optional)
 - Freely use this section to tell us about things that are related to the project 1, but not related to the other sections (optional)
 
+My current team member, Yuzhou Guo, joined me on Saturday. I had two (!) previous team members but they just dropped the class... That's why the bulk of record file manager class was already coded by me, I was afraid I wouldn't find a team member before the first deadline.
