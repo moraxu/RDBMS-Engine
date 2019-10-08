@@ -97,6 +97,12 @@ public:
     // Insert a record into a file
     RC insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const void *data, RID &rid);
 
+    void transformDataToRecordFormat(const std::vector<Attribute> &recordDescriptor, const void *data, std::vector<byte> &recordFormat);
+
+    RC readFirstFreePage(FileHandle &fileHandle, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber);
+
+    RC insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned fieldsNo, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page);
+
     // Read a record identified by the given rid.
     RC readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
 
