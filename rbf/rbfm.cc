@@ -43,7 +43,10 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vecto
 
     unsigned pageNumber;
     unsigned targetSlotNumber;
-    byte page[PAGE_SIZE] = { 0 };
+    byte page[PAGE_SIZE] ;
+    memset(page, 0, PAGE_SIZE);
+    *reinterpret_cast<unsigned*>(page + PAGE_SIZE - sizeof(unsigned)*2) = 1;
+
 
     RC rcode = readFirstFreePage(fileHandle, pageNumber, recordFormat.size(), page, targetSlotNumber);
     if(rcode != 0) {
@@ -62,7 +65,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vecto
 }
 
 void RecordBasedFileManager::transformDataToRecordFormat(const std::vector<Attribute> &recordDescriptor, const void *data, std::vector<byte> &recordFormat) {
-    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8));
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8.0));
     const byte* actualData = reinterpret_cast<const byte*>(data) + nullInfoFieldLength;
     unsigned actualDataSizeInBytes = 0;
 
@@ -70,9 +73,11 @@ void RecordBasedFileManager::transformDataToRecordFormat(const std::vector<Attri
 
     for(unsigned i = 0 ; i < recordDescriptor.size() ; ++i) {
         const byte* byteInNullInfoField = reinterpret_cast<const byte*>(data) + i/8;
+
         bool nullField = *byteInNullInfoField & (1 << 7-i%8);
         if(nullField) {
             fieldOffsets[i+1] = fieldOffsets[i];
+
         }
         else {
             if(recordDescriptor[i].type == AttrType::TypeInt || recordDescriptor[i].type == AttrType::TypeReal) {
@@ -94,6 +99,7 @@ void RecordBasedFileManager::transformDataToRecordFormat(const std::vector<Attri
     recordFormat.insert(recordFormat.end(),
                         actualData,
                         actualData + actualDataSizeInBytes);
+
 }
 
 RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber) {
@@ -101,6 +107,7 @@ RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned &p
 
     if(numberOfPages > 0) {
         bool lastPageNotAnalyzed = true;
+
         for(unsigned i = numberOfPages-1 ; i < numberOfPages-1 || lastPageNotAnalyzed ; ) {
             RC rcode = fileHandle.readPage(i, page);
             if(rcode != 0) {
@@ -121,15 +128,17 @@ RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned &p
                 }
             }
 
-            unsigned totalFreeSpaceInBytes = PAGE_SIZE - sizeof(unsigned)*2 - slotDirectorySize*sizeof(unsigned)*2 - freeSpaceOffset;
+            long totalFreeSpaceInBytes = PAGE_SIZE - sizeof(unsigned)*2 - slotDirectorySize*sizeof(unsigned)*2 - freeSpaceOffset;
             if(!emptySlotFound) {
                 totalFreeSpaceInBytes -= sizeof(unsigned)*2;
             }
 
-            if(recordLength <= totalFreeSpaceInBytes) {
+            if(totalFreeSpaceInBytes >0 && recordLength <= totalFreeSpaceInBytes) {
+
                 pageNumber = i;
                 if(!emptySlotFound) {
                     *reinterpret_cast<unsigned*>(page + PAGE_SIZE - sizeof(unsigned)*2) += 1;
+                    targetSlotNumber = slotDirectorySize;
                 }
                 return 0;
             }
@@ -144,6 +153,8 @@ RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned &p
         }
     }
 
+    memset(page, 0, PAGE_SIZE);
+    *reinterpret_cast<unsigned*>(page + PAGE_SIZE - sizeof(unsigned)*2) = 1;
     RC rcode = fileHandle.appendPage(page);
     if(rcode != 0) {
         return rcode;
@@ -156,6 +167,7 @@ RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned &p
 
 RC RecordBasedFileManager::insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned fieldsNo, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page) {
     unsigned freeSpaceOffset = *reinterpret_cast<unsigned*>(page + PAGE_SIZE - sizeof(unsigned));
+
     memcpy(page+freeSpaceOffset, recordFormat.data(), recordFormat.size());
 
     for(unsigned i = 0, *fieldOffset = reinterpret_cast<unsigned*>(page+freeSpaceOffset) ; i < fieldsNo+1 ; ++i, ++fieldOffset) {
@@ -178,7 +190,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<
         return rcode;
     }
 
-    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8));
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8.0));
     std::vector<byte> readData(nullInfoFieldLength, 0);
     unsigned fieldOffsetsLocation = *reinterpret_cast<int*>(page + PAGE_SIZE - sizeof(unsigned)*4 - rid.slotNum*sizeof(unsigned)*2);
 
@@ -209,7 +221,7 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vecto
 }
 
 RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data) {
-    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8));
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8.0));
     const byte* actualData = reinterpret_cast<const byte*>(data) + nullInfoFieldLength;
 
     for(unsigned i = 0 ; i < recordDescriptor.size() ; ++i) {
@@ -239,6 +251,7 @@ RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescr
                 actualData += varCharLength;
             }
         }
+        cout<<"\n";
     }
 
     return 0;
