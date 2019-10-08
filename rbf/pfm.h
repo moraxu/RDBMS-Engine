@@ -9,6 +9,9 @@ typedef unsigned char byte;
 
 #include <string>
 #include <climits>
+#include <stdio.h>
+#include <unistd.h>
+#include <string.h>
 
 class FileHandle;
 
@@ -37,6 +40,9 @@ public:
     unsigned readPageCounter;
     unsigned writePageCounter;
     unsigned appendPageCounter;
+    unsigned noPages;
+
+    FILE *fp;
 
     FileHandle();                                                       // Default constructor
     ~FileHandle();                                                      // Destructor
