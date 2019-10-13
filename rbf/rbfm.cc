@@ -37,7 +37,7 @@ RC RecordBasedFileManager::closeFile(FileHandle &fileHandle) {
 }
 
 RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                        const void *data, RID &rid) {
+    const void *data, RID &rid) {
     std::vector<byte> recordFormat;
     transformDataToRecordFormat(recordDescriptor, data, recordFormat);
 
@@ -48,7 +48,7 @@ RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vecto
     *reinterpret_cast<unsigned*>(page + PAGE_SIZE - sizeof(unsigned)*2) = 1;
 
 
-    RC rcode = readFirstFreePage(fileHandle, pageNumber, recordFormat.size(), page, targetSlotNumber);
+    RC rcode = readFirstFreePage(fileHandle, FileHandle.getNumberOfPages()-1, pageNumber, recordFormat.size(), page, targetSlotNumber);
     if(rcode != 0) {
         return rcode;
     }
@@ -102,13 +102,14 @@ void RecordBasedFileManager::transformDataToRecordFormat(const std::vector<Attri
 
 }
 
-RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber) {
+
+RC RecordBasedFileManager::readFirstFreePage(FileHandle &fileHandle, unsigned startPage, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber) {
     unsigned numberOfPages = fileHandle.getNumberOfPages();
 
     if(numberOfPages > 0) {
         bool lastPageNotAnalyzed = true;
 
-        for(unsigned i = numberOfPages-1 ; i < numberOfPages-1 || lastPageNotAnalyzed ; ) {
+        for(unsigned i = startPage; i < startPage || lastPageNotAnalyzed; ) {
             RC rcode = fileHandle.readPage(i, page);
             if(rcode != 0) {
                 return rcode;
@@ -182,8 +183,36 @@ RC RecordBasedFileManager::insertRecordOnPage(FileHandle &fileHandle, const std:
     return rcode;
 }
 
+RC RecordBasedFileManager::shiftRecord(byte *page,const unsigned dataSize){
+    unsigned *freeSpace = (unsigned *)(page+PAGE_SIZE-sizeof(unsigned));
+    unsigned *slotSize = (unsigned *)(page+PAGE_SIZE-2*sizeof(unsigned));
+    unsigned *recordOffset = (unsigned *)(page+PAGE_SIZE-2*(s+2)*sizeof(unsigned));
+    unsigned *recordLen = (unsigned *)(page+PAGE_SIZE-(2*s+3)*sizeof(unsigned));
+    unsigned bytesToBeWritten = *freeSpace-(*recordOffset+*recordLen);
+
+    memcpy(pageStart+*recordOffset+dataSize,pageStart+*recordOffset+*recordLen,bytesToBeWritten);
+
+    for(int i = 0;i < *slotSize;i++){
+        unsigned *slotOffset = (unsigned *)(pageStart+PAGE_SIZE-2*(i+2)*sizeof(unsigned));
+        if(*slotOffset != -1 && *slotOffset > *recordOffset)
+            //Note: unsigned expression has to be positive 
+            if(*recordLen > dataSize)
+                *slotOffset -= (*recordLen-dataSize);
+            else *slotOffset += (dataSize-*recordLen);
+    }
+    if(dataSize == 0)
+        *recordOffset = -1;
+    if(*recordLen > dataSize)
+        *freeSpace -= (*recordLen-dataSize);
+    else
+        *freeSpace += (dataSize-*recordLen);
+    *recordLen = dataSize;a
+
+    return 0;
+}
+
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                      const RID &rid, void *data) {
+    const RID &rid, void *data) {
     byte page[PAGE_SIZE];
     RC rcode = fileHandle.readPage(rid.pageNum, page);
     if(rcode != 0) {
@@ -215,9 +244,41 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<
     return 0;
 }
 
+/**
+Important Note: The first field(offset field) in slot is set to -1 if deleted;
+The second field(length field) is set to -1 if the slot is tombstone. If so, the record content is filled with the actual RID. 
+**/
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                        const RID &rid) {
-    return -1;
+    const RID &rid) {
+    unsigned p = rid.pageNum,s = rid.slotNum;
+    byte *pageStart = new byte[PAGE_SIZE];
+    int rc = fileHandle.readPage(p,pageStart);
+    if(rc == -1)
+        return -1;
+
+    unsigned *freeSpace = (unsigned *)(pageStart+PAGE_SIZE-sizeof(unsigned));
+    unsigned *slotSize = (unsigned *)(pageStart+PAGE_SIZE-2*sizeof(unsigned));
+    unsigned *recordOffset = (unsigned *)(pageStart+PAGE_SIZE-2*(s+2)*sizeof(unsigned));
+    unsigned *recordLen = (unsigned *)(pageStart+PAGE_SIZE-(2*s+3)*sizeof(unsigned));
+
+    while(*recordLen == -1){
+        RID cur;
+        cur.pageNum = *(unsigned *)(pageStart+*recordOffset);
+        cur.slotNum = *(unsigned *)(pageStart+*recordOffset+sizeof(unsigned));
+        deleteRecord(FileHandle,recordDescriptor,cur);
+    }
+    //If the record has not been deleted,then delete it
+    if(*recordOffset != -1){
+        //Shift records
+        shiftRecord(pageStart,0);
+
+        int rc2 = fileHandle.writePage(p,pageStart);
+        if(rc2 == -1)
+            return -1;
+    }
+
+    free(pageStart);
+    return 0;
 }
 
 RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescriptor, const void *data) {
@@ -257,9 +318,76 @@ RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescr
     return 0;
 }
 
+/**
+Important Note: The first field(offset field) in slot is set to -1 if deleted;
+The second field(length field) is set to -1 if the slot is tombstone. If so, the record content is filled with the actual RID. 
+**/
 RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                        const void *data, const RID &rid) {
-    return -1;
+    const void *data, const RID &rid) {
+    vector<byte> formattedData;
+    transformDataToRecordFormat(recordDescriptor,data,formattedData);
+    unsigned dataSize =  sizeof(*formattedData.data());;
+    unsigned p = rid.pageNum,s = rid.slotNum;
+    byte *pageStart = new byte[PAGE_SIZE];
+    int rc = fileHandle.readPage(p,pageStart);
+    if(rc == -1)
+        return -1;
+
+    unsigned *freeSpace = (unsigned *)(pageStart+PAGE_SIZE-sizeof(unsigned));
+    unsigned *slotSize = (unsigned *)(pageStart+PAGE_SIZE-2*sizeof(unsigned));
+    unsigned *recordOffset = (unsigned *)(pageStart+PAGE_SIZE-2*(s+2)*sizeof(unsigned));
+    unsigned *recordLen = (unsigned *)(pageStart+PAGE_SIZE-(2*s+3)*sizeof(unsigned));
+
+    //If the record rid refers to doesn't exist,return
+    if(*recordOffset == -1) return 0;
+    //If the slot is a tombstone,loop until it's not a tombstone
+    while(*recordLen == -1){
+        RID cur;
+        cur.pageNum = *(unsigned *)(pageStart+*recordOffset);
+        cur.slotNum = *(unsigned *)(pageStart+*recordOffset+sizeof(unsigned));
+        updateRecord(FileHandle,recordDescriptor,data,cur);
+    }
+
+    if(*recordLen > dataSize){
+        memcpy((byte *)recordOffset,formattedData.data(),dataSize);
+        //Shift towards the begining of page
+        shiftRecord(pageStart,dataSize);
+
+    }else if(*recordLen == dataSize)
+        memcpy((byte *)recordOffset,formattedData.data(),dataSize);
+    else{
+        //Check if there is enough free space in this page for the augmentation
+        //If so, do not use tombstone
+        unsigned freeSpaceLeft = PAGE_SIZE-2*sizeof(unsigned)-2*sizeof(unsigned)*(*slotSize)-*freeSpace;
+
+        if(freeSpaceLeft >= dataSize-*recordLen){
+            //Shift towards the end of page
+            shiftRecord(pageStart,dataSize);
+        }else{
+            //Find free space for the update in another page, also use tombstone
+            unsigned pageNumber,slotNumber;
+            byte page = new byte[PAGE_SIZE];
+            unsigned upper = fileHandle.getNumberOfPages();
+            readFirstFreePage(fileHandle,p+1 == upper?0:p+1,pageNumber,dataSize,page,slotNumber);
+            insertRecordOnPage(fileHandle,formattedData,recordDescriptor.size(),pageNumber,slotNumber,page);
+
+            //delete original record and add the RID after migrated
+            //Note: the length of the original record must be greater than 2*sizeof(unsigned)
+            shiftRecord(pageStart,2*sizeof(unsigned));
+            *recordOffset = pageNumber;
+            *(recordOffset+1) = slotNumber;
+
+            //set length field to -1 as a tombstone
+            *recordLen = -1;
+        }
+    }
+
+    int rc = fileHandle.writePage(p,pageStart);
+    if(rc == -1)
+        return -1;
+    free(pageStart);
+
+    return 0;
 }
 
 RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
