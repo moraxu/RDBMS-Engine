@@ -261,11 +261,12 @@ RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vecto
     unsigned *recordOffset = (unsigned *)(pageStart+PAGE_SIZE-2*(s+2)*sizeof(unsigned));
     unsigned *recordLen = (unsigned *)(pageStart+PAGE_SIZE-(2*s+3)*sizeof(unsigned));
 
-    while(*recordLen == -1){
+    if(*recordLen == -1){
         RID cur;
         cur.pageNum = *(unsigned *)(pageStart+*recordOffset);
         cur.slotNum = *(unsigned *)(pageStart+*recordOffset+sizeof(unsigned));
         deleteRecord(FileHandle,recordDescriptor,cur);
+        return;
     }
     //If the record has not been deleted,then delete it
     if(*recordOffset != -1){
@@ -341,11 +342,12 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
     //If the record rid refers to doesn't exist,return
     if(*recordOffset == -1) return 0;
     //If the slot is a tombstone,loop until it's not a tombstone
-    while(*recordLen == -1){
+    if(*recordLen == -1){
         RID cur;
         cur.pageNum = *(unsigned *)(pageStart+*recordOffset);
         cur.slotNum = *(unsigned *)(pageStart+*recordOffset+sizeof(unsigned));
         updateRecord(FileHandle,recordDescriptor,data,cur);
+        return 0;
     }
 
     if(*recordLen > dataSize){
@@ -366,7 +368,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
         }else{
             //Find free space for the update in another page, also use tombstone
             unsigned pageNumber,slotNumber;
-            byte page = new byte[PAGE_SIZE];
+            byte page[PAGE_SIZE];
             unsigned upper = fileHandle.getNumberOfPages();
             readFirstFreePage(fileHandle,p+1 == upper?0:p+1,pageNumber,dataSize,page,slotNumber);
             insertRecordOnPage(fileHandle,formattedData,recordDescriptor.size(),pageNumber,slotNumber,page);
@@ -380,13 +382,11 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
             //set length field to -1 as a tombstone
             *recordLen = -1;
         }
+
+        int rc = fileHandle.writePage(p,pageStart);
+        if(rc == -1)
+            return -1;
     }
-
-    int rc = fileHandle.writePage(p,pageStart);
-    if(rc == -1)
-        return -1;
-    free(pageStart);
-
     return 0;
 }
 
