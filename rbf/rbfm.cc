@@ -190,10 +190,10 @@ RC RecordBasedFileManager::shiftRecord(byte *page,const unsigned dataSize){
     unsigned *recordLen = (unsigned *)(page+PAGE_SIZE-(2*s+3)*sizeof(unsigned));
     unsigned bytesToBeWritten = *freeSpace-(*recordOffset+*recordLen);
 
-    memcpy(pageStart+*recordOffset+dataSize,pageStart+*recordOffset+*recordLen,bytesToBeWritten);
+    memcpy(page+*recordOffset+dataSize,page+*recordOffset+*recordLen,bytesToBeWritten);
 
     for(int i = 0;i < *slotSize;i++){
-        unsigned *slotOffset = (unsigned *)(pageStart+PAGE_SIZE-2*(i+2)*sizeof(unsigned));
+        unsigned *slotOffset = (unsigned *)(page+PAGE_SIZE-2*(i+2)*sizeof(unsigned));
         if(*slotOffset != -1 && *slotOffset > *recordOffset)
             //Note: unsigned expression has to be positive 
             if(*recordLen > dataSize)
