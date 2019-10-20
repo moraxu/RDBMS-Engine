@@ -232,7 +232,7 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<
     //Record has already been deleted, so no record to be read!
     if(fieldOffsetsLocation ==  -1)
         return -1;
-    cout<<cnt++<<endl;
+    //cout<<cnt++<<endl;
 
     if(recordLen == -1){
         RID cur;
@@ -246,17 +246,17 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<
         if(*fieldOffsets == *(fieldOffsets+1)) {
             unsigned byteInNullInfoField = i/8;
             readData[byteInNullInfoField] |= (1 << 7-i%8);
-            cout<<"Null: " <<cnt++<<endl;
+            //cout<<"Null: " <<cnt++<<endl;
         }
         else {
             if(recordDescriptor[i].type == AttrType::TypeInt || recordDescriptor[i].type == AttrType::TypeReal) {
-                cout<<"Int: "<<cnt++<<endl;
+                //cout<<"Int: "<<cnt++<<endl;
                 //cout<<*fieldOffsets<<endl;
                 readData.insert(readData.end(), page + *fieldOffsets, page + *fieldOffsets + recordDescriptor[i].length);
             }
             else { //recordDescriptor[i].type == AttrType::TypeVarChar
-                cout<<"Varchar: "<<cnt++<<endl;
-                cout<<*fieldOffsets<<" "<<*(unsigned *)(page+ *fieldOffsets)<<endl;
+                //cout<<"Varchar: "<<cnt++<<endl;
+                //<<*fieldOffsets<<" "<<*(unsigned *)(page+ *fieldOffsets)<<endl;
                 readData.insert(readData.end(), page + *fieldOffsets, page + *fieldOffsets + 4);
                 readData.insert(readData.end(), page + *fieldOffsets + 4, page + *fieldOffsets + 4 + *(unsigned *)(page + *fieldOffsets));
             }

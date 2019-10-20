@@ -1,6 +1,6 @@
 include ../makefile.inc
 
-all: librbf.a rbftest_01 rbftest_02 rbftest_03 rbftest_04 rbftest_05 rbftest_06 rbftest_07 rbftest_08 rbftest_08b rbftest_09 rbftest_10 rbftest_11 rbftest_12 rbftest_update rbftest_delete
+all: librbf.a rbftest_01 rbftest_02 rbftest_03 rbftest_04 rbftest_05 rbftest_06 rbftest_07 rbftest_08 rbftest_08b rbftest_09 rbftest_10 rbftest_11 rbftest_12 rbftest_update rbftest_delete rbftest_p1 rbftest_p2 rbftest_p2b rbftest_p2c rbftest_p3 rbftest_p3b rbftest_p4 rbftest_p5 rbftest_p6
 
 # c file dependencies
 pfm.o: pfm.h
