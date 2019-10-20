@@ -93,7 +93,7 @@ int RBFTest_Delete(RecordBasedFileManager &rbfm) {
     rc = rbfm.readRecord(fileHandle, recordDescriptor, rid0, returnedData);
     assert(rc != success && "Reading a deleted record should fail.");
 
-    // Given the rid, read the record from file
+    //cout<<"rid1: "<<rid1.pageNum<<" "<<rid1.slotNum<<endl;
     rc = rbfm.readRecord(fileHandle, recordDescriptor, rid1, returnedData);
     assert(rc == success && "Reading a record should not fail.");
 

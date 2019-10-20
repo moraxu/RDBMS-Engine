@@ -82,7 +82,7 @@ int RBFTest_9(RecordBasedFileManager &rbfm, vector<RID> &rids, vector<int> &size
                            sizeof(unsigned));
             ridsFile.write(reinterpret_cast<const char *>(&rids[i].slotNum),
                            sizeof(unsigned));
-            if (i % 1000 == 0) {
+            if (i % 10 == 0) {
                 cout << "RID #" << i << ": " << rids[i].pageNum << ", "
                      << rids[i].slotNum << endl;
             }
@@ -97,7 +97,7 @@ int RBFTest_9(RecordBasedFileManager &rbfm, vector<RID> &rids, vector<int> &size
         sizesFile.seekp(0, ios::beg);
         for (int i = 0; i < numRecords; i++) {
             sizesFile.write(reinterpret_cast<const char *>(&sizes[i]), sizeof(int));
-            if (i % 1000 == 0) {
+            if (i % 10 == 0) {
                 cout << "Sizes #" << i << ": " << sizes[i] << endl;
             }
         }

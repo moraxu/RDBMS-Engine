@@ -103,7 +103,7 @@ public:
 
     RC insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned fieldsNo, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page);
 
-    RC shiftRecord(byte *page,const unsigned dataSize);
+    RC shiftRecord(byte *page,const unsigned dataSize,const unsigned slotNumber,const unsigned fieldLen);
 
     // Read a record identified by the given rid.
     RC readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);

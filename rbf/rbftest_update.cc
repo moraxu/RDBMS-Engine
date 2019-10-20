@@ -19,8 +19,11 @@ void readRecord(RecordBasedFileManager &rbfm, const RID &rid, const std::string 
     int recordSize;
     prepareRecord(recordDescriptor.size(), nullsIndicator, str.length(), str, 25, 177.8, 6200,
                   record, &recordSize);
+    rbfm.printRecord(recordDescriptor,record);
 
     RC rc = rbfm.readRecord(fileHandle, recordDescriptor, rid, returnedData);
+    rbfm.printRecord(recordDescriptor,returnedData);
+
     assert(rc == success && "Reading a record should not fail.");
 
     // Compare whether the two memory blocks are the same
@@ -98,19 +101,23 @@ int RBFTest_Update(RecordBasedFileManager &rbfm) {
     // Insert short record
     insertRecord(rbfm, rid, shortStr);
     RID shortRID = rid;
+    cout<<"shortRID: "<<shortRID.pageNum<<" "<<shortRID.slotNum<<endl;
 
     // Insert mid record
     insertRecord(rbfm, rid, midString);
     RID midRID = rid;
+    cout<<"midRID: "<<midRID.pageNum<<" "<<shortRID.slotNum<<endl;
 
     // Insert long record
     insertRecord(rbfm, rid, longStr);
 
     // update short record
     updateRecord(rbfm, shortRID, midString);
+    cout<<"Update1 no segmentation fault!"<<endl;
 
     //read updated short record and verify its content
     readRecord(rbfm, shortRID, midString);
+    cout<<"Read1 no segmentation fault!"<<endl;
 
     // insert two more records
     insertRecord(rbfm, rid, longStr);
@@ -118,18 +125,23 @@ int RBFTest_Update(RecordBasedFileManager &rbfm) {
 
     // read mid record and verify its content
     readRecord(rbfm, midRID, midString);
+    cout<<"Read2 no segmentation fault!"<<endl;
 
     // update short record
     updateRecord(rbfm, shortRID, longStr);
+    cout<<"Update2 no segmentation fault!"<<endl;
 
     // read the short record and verify its content
     readRecord(rbfm, shortRID, longStr);
+    cout<<"Read3 no segmentation fault!"<<endl;
 
     // delete the short record
     rbfm.deleteRecord(fileHandle, recordDescriptor, shortRID);
+    cout<<"Delete no segmentation fault!"<<endl;
 
     // verify the short record has been deleted
     rc = rbfm.readRecord(fileHandle, recordDescriptor, shortRID, returnedData);
+    cout<<"Read4 no segmentation fault!"<<endl;
 
     assert(rc != success && "Read a deleted record should not success.");
 

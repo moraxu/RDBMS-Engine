@@ -94,8 +94,11 @@ FileHandle::~FileHandle() = default;
 
 RC FileHandle::readPage(PageNum pageNum, void *data) {
     //Intend to read a non-existing page!
-    if(pageNum >= noPages)
+    //Fix test case 06
+    if(pageNum >= noPages){
+        readPageCounter++;
         return -1;
+    }
     
     //NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
     fseek( fp, 4*sizeof(unsigned)+pageNum*PAGE_SIZE, SEEK_SET );
@@ -109,9 +112,12 @@ RC FileHandle::readPage(PageNum pageNum, void *data) {
 }
 
 RC FileHandle::writePage(PageNum pageNum, const void *data) {
-    //Intend to update a non-existing page!
-    if(pageNum >= noPages)
+    //Intend to update a non-existing page!    
+    //Fix test case 06
+    if(pageNum >= noPages){
+        writePageCounter++;
         return -1;
+    }
     
     //NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
     fseek( fp, 4*sizeof(unsigned)+pageNum*PAGE_SIZE, SEEK_SET );
