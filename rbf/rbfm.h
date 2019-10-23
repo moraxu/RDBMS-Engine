@@ -101,7 +101,7 @@ public:
 
     RC readFirstFreePage(FileHandle &fileHandle, unsigned startPage, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber);
 
-    RC insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned fieldsNo, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page);
+    RC insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page);
 
     RC shiftRecord(byte *page,const unsigned dataSize,const unsigned slotNumber);
 
