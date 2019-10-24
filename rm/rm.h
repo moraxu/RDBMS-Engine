@@ -24,7 +24,19 @@ public:
 // Relation Manager
 class RelationManager {
 public:
-    static RelationManager &instance();
+    static RelationManager *instance();
+
+    RC createTableDescriptor();
+
+    RC createColumnDescriptor();
+
+    RC openFile(const std::string &tableName,FileHandle &fileHandle);
+
+    RC createFile(const std::string &fileName);
+
+    RC getIdFromTableName(const std::string &tableName);
+
+    string getFileName(const std::string &tableName);
 
     RC createCatalog();
 
@@ -72,6 +84,9 @@ protected:
 
 private:
     static RelationManager *_relation_manager;
+    std::vector<Attribute> tablesDescriptor;
+    std::vector<Attribute> columnDescriptor;
+    RecordBasedFileManager rbfm;
 };
 
 #endif
