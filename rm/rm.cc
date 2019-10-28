@@ -311,14 +311,12 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     }
 
     RM_ScanIterator tableIt;
-    //The second-to-last parameter of scan should be  the attribute names of  'Tables'.
-    //std::vector<std::string> attributeNames(1, "table-id");
-    std::vector<string> attr = {"table-id","table-name","file-name"};
-    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attr, tableIt);
+    std::vector<std::string> attributeNamesEmpty;   //we only want to get RID, not any fields
+    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, tableIt);
 
     RID rid;
-    unsigned bytes[2];  //not sure if needed though
-    rc = tableIt.getNextTuple(rid, bytes);
+    void* dummyPtr = nullptr;   //we only want to get RID, not any fields
+    rc = tableIt.getNextTuple(rid, dummyPtr);
     if(rc != 0) {
         return rc;
     }
@@ -328,10 +326,11 @@ RC RelationManager::deleteTable(const std::string &tableName) {
         return rc;
     }
 
+    RM_ScanIterator columnIt;
     //We then delete all of the rows corresponding to table's columns in the system catalog "Columns"
-    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNames, tableIt);
+    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, columnIt);
     int counter = 0;
-    for( ; counter < attrs.size() && (rc = tableIt.getNextTuple(rid, bytes)) != RM_EOF ; ++counter) {
+    for( ; counter < attrs.size() && (rc = columnIt.getNextTuple(rid, nullptr)) != RM_EOF ; ++counter) {
         deleteTuple("Columns", rid);
     }
     //Iterator needs to be closed
