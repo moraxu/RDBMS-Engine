@@ -10,15 +10,25 @@
 
 // RM_ScanIterator is an iterator to go through tuples
 class RM_ScanIterator {
+    RBFM_ScanIterator rbfmIt;
+
 public:
     RM_ScanIterator() = default;
 
     ~RM_ScanIterator() = default;
 
-    // "data" follows the same format as RelationManager::insertTuple()
-    RC getNextTuple(RID &rid, void *data) { return RM_EOF; };
+    void setRbfmIt(const RBFM_ScanIterator &rbfmIt) {
+        RM_ScanIterator::rbfmIt = rbfmIt;
+    }
 
-    RC close() { return -1; };
+    RBFM_ScanIterator& getRbfmIt() {
+        return rbfmIt;
+    }
+
+    // "data" follows the same format as RelationManager::insertTuple()
+    RC getNextTuple(RID &rid, void *data) { return rbfmIt.getNextRecord(rid, data); };
+
+    RC close() { return rbfmIt.close(); };
 };
 
 // Relation Manager
@@ -39,6 +49,12 @@ public:
     RC getIdFromTableName(const std::string &tableName);
 
     string getFileName(const std::string &tableName);
+
+    RC insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid);
+
+    void createTableTableRow(const unsigned& tableID, const std::string &tableName, std::vector<byte>& bytesToWrite);
+
+    void createColumnTableRow(const unsigned& tableID, const Attribute &attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite);
 
     RC createCatalog();
 
@@ -89,6 +105,8 @@ private:
     std::vector<Attribute> tablesDescriptor;
     std::vector<Attribute> columnDescriptor;
     RecordBasedFileManager rbfm;
+    static unsigned lastTableID;
+    static unsigned numberOfColumnsTblFields;
 };
 
 #endif

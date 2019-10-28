@@ -197,7 +197,6 @@ RC RecordBasedFileManager::shiftRecord(byte *page,const unsigned dataSize, const
     int diff = (int)*recordLen-(int)dataSize;
     for(int i = 0;i < *slotSize;i++){
         int *slotOffset = (int *)(page+PAGE_SIZE-2*(i+2)*sizeof(int));
-        int *slotLen = (int *)(page+PAGE_SIZE-(2*i+3)*sizeof(int));
         if(*slotOffset != -1 && *slotOffset > *recordOffset){
             *slotOffset -= diff;
         }
@@ -219,15 +218,13 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<
     //int cnt = 1;
     //cout<<cnt++<<endl;
 
-    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8.0));
-    std::vector<byte> readData(nullInfoFieldLength, 0);
     int fieldOffsetsLocation = *reinterpret_cast<int*>(page + PAGE_SIZE - sizeof(unsigned)*4 - rid.slotNum*sizeof(unsigned)*2);
     //Record has already been deleted, so no record to be read!
     if(fieldOffsetsLocation == -1)
         return -1;
     //cout<<cnt++<<endl;
-    int recordLen = *(int *)(page + PAGE_SIZE - sizeof(unsigned)*3 - rid.slotNum*sizeof(unsigned)*2);
 
+    int recordLen = *(int *)(page + PAGE_SIZE - sizeof(unsigned)*3 - rid.slotNum*sizeof(unsigned)*2);
     //Recursively visit tombstones until a page with real record is found
     if(recordLen == -1){
         RID cur;
@@ -236,6 +233,9 @@ RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<
         //cout<<"Current rid: "<<cur.pageNum<<" "<<cur.slotNum<<" "<<cnt++<<endl;
         return readRecord(fileHandle,recordDescriptor,cur,data);
     }
+
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(recordDescriptor.size()/8.0));
+    std::vector<byte> readData(nullInfoFieldLength, 0);
 
     for(unsigned i = 0, *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) ; i < recordDescriptor.size() ; ++i, fieldOffsets++) {
         if(*fieldOffsets == *(fieldOffsets+1)) {
@@ -345,6 +345,25 @@ RC RecordBasedFileManager::printRecord(const std::vector<Attribute> &recordDescr
     return 0;
 }
 
+RC RecordBasedFileManager::moveToNextAvailableRecord(FileHandle& fileHandle, RID& rid) {
+    //We first consider the position given in rid itself
+    for( ; rid.pageNum < fileHandle.getNumberOfPages() ; ++rid.pageNum, rid.slotNum=0) {
+        byte page[PAGE_SIZE];
+        RC rcode = fileHandle.readPage(rid.pageNum,page);
+        if(rcode != 0) {
+            return -1;
+        }
+        unsigned slotDirectorySize = *reinterpret_cast<unsigned *>(page + PAGE_SIZE - sizeof(unsigned)*2);
+        while(rid.slotNum < slotDirectorySize && *reinterpret_cast<int*>(page + PAGE_SIZE - sizeof(unsigned)*4 - rid.slotNum*sizeof(unsigned)*2) == -1) {
+            ++rid.slotNum;
+        }
+        if(rid.slotNum < slotDirectorySize) {
+            return 0; //we found non-empty slot
+        }
+    }
+    return RBFM_EOF;
+}
+
 /**
 Important Note: The first field(offset field) in slot is set to -1 if deleted;
 The second field(length field) is set to -1 if the slot is tombstone. If so, the record content is filled with the actual RID.
@@ -406,7 +425,7 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
             byte page[PAGE_SIZE];
             unsigned upper = fileHandle.getNumberOfPages();
 
-            RC rc = readFirstFreePage(fileHandle,p+1 == upper?0:p+1,pageNumber,dataSize,page,slotNumber);
+            rc = readFirstFreePage(fileHandle,p+1 == upper?0:p+1,pageNumber,dataSize,page,slotNumber);
             if(rc != 0)
                 return rc;
 
@@ -428,13 +447,178 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
     }
 }
 
-RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                         const RID &rid, const std::string &attributeName, void *data) {
-    return -1;
+/**
+Important Note: This is readRecord lookalike, it extracts only the column names with the indices listed in "attributesToExtract" vector.
+**/
+RC RecordBasedFileManager::filterAttributes(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data, const std::vector<unsigned> &attributesToExtract) {
+    if(attributesToExtract.empty()) { //just as precaution
+        return 0;
+    }
+
+    byte page[PAGE_SIZE];
+    RC rcode = fileHandle.readPage(rid.pageNum, page);
+    if(rcode != 0) {
+        return rcode;
+    }
+
+    int fieldOffsetsLocation = *reinterpret_cast<int*>(page + PAGE_SIZE - sizeof(unsigned)*4 - rid.slotNum*sizeof(unsigned)*2);
+    if(fieldOffsetsLocation == -1)
+        return -1;
+
+    int recordLen = *(int *)(page + PAGE_SIZE - sizeof(unsigned)*3 - rid.slotNum*sizeof(unsigned)*2);
+    if(recordLen == -1){
+        RID cur;
+        cur.pageNum = *(unsigned *)(page + fieldOffsetsLocation);
+        cur.slotNum = *(unsigned *)(page + fieldOffsetsLocation + sizeof(unsigned));
+        return readRecord(fileHandle,recordDescriptor,cur,data);
+    }
+
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attributesToExtract.size()/8.0));
+    std::vector<byte> readData(nullInfoFieldLength, 0);
+
+    for(unsigned i = 0, *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) ; i < attributesToExtract.size() ; ++i) {
+        unsigned attrInd = attributesToExtract[i];
+        fieldOffsets += attrInd;
+
+        if(*fieldOffsets == *(fieldOffsets+1)) {
+            unsigned byteInNullInfoField = i/8;
+            readData[byteInNullInfoField] |= (1 << 7-i%8);
+        }
+        else {
+            if(recordDescriptor[attrInd].type == AttrType::TypeInt || recordDescriptor[attrInd].type == AttrType::TypeReal) {
+                byte* beginningOfRecord = page + fieldOffsetsLocation + (recordDescriptor.size()+1)*sizeof(unsigned) + *fieldOffsets;
+                readData.insert(readData.end(), beginningOfRecord, beginningOfRecord + recordDescriptor[attrInd].length);
+            }
+            else { //recordDescriptor[attrInd].type == AttrType::TypeVarChar
+                byte* beginningOfStrLength = page + fieldOffsetsLocation + (recordDescriptor.size()+1)*sizeof(unsigned) + *fieldOffsets;
+                byte* beginningOfStrContent = beginningOfStrLength + sizeof(unsigned);
+                readData.insert(readData.end(), beginningOfStrLength, beginningOfStrContent);
+                readData.insert(readData.end(), beginningOfStrContent, beginningOfStrContent + *reinterpret_cast<unsigned*>(beginningOfStrLength));
+            }
+        }
+    }
+    memcpy(data, readData.data(), readData.size());
+    return 0;
 }
 
-RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                const std::string &conditionAttribute, const CompOp compOp, const void *value,
-                                const std::vector<std::string> &attributeNames, RBFM_ScanIterator &rbfm_ScanIterator) {
-    return -1;
+//The actual data in *data is also prefixed with a null byte, just as in format used in the other RecordBasedFileManager's methods
+RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                         const RID &rid, const std::string &attributeName, void *data) {
+    unsigned attributeIndex = -1;
+    for(int i = 0 ; i < recordDescriptor.size() ; ++i) {
+        if(recordDescriptor[i].name == attributeName) {
+            attributeIndex = i;
+            break;
+        }
+    }
+    if(attributeIndex == -1) {
+        return -1;
+    }
+    return filterAttributes(fileHandle, recordDescriptor, rid, data, std::vector<unsigned>(1, attributeIndex));
+}
+
+//This is a bad design, but we have to follow that. We basically need to use scan to initialize/change RBFM_ScanIterator,
+//I only introduced setters/getters in order not to declare friendship between classes. We're not supposed to invoke
+//RBFM_ScanIterator's setter classes on their own, because at the end of our changes we should also invoke RBFM_ScanIterator::fillAttrIndices(), like here
+RC RecordBasedFileManager::scan(FileHandle &fileHandle,
+                                const std::vector<Attribute> &recordDescriptor,
+                                const std::string &conditionAttribute,
+                                const CompOp compOp,
+                                const void *value,
+                                const std::vector<std::string> &attributeNames,
+                                RBFM_ScanIterator &rbfm_ScanIterator) {
+    rbfm_ScanIterator.setFileHandle(fileHandle);
+    rbfm_ScanIterator.setRecordDescriptor(recordDescriptor);
+    rbfm_ScanIterator.setConditionAttribute(conditionAttribute);
+    rbfm_ScanIterator.setCompOp(compOp);
+    rbfm_ScanIterator.setValue(value);
+    rbfm_ScanIterator.setAttributeNames(attributeNames);
+    rbfm_ScanIterator.fillAttrIndices();
+    return 0;
+}
+
+//We do some preprocessing of the projected attributes and the attribute used for comparison
+//- we save their default IDs in recordDescriptor vector in order to use
+//them later: in RBFM_ScanIterator::getNextRecord and RecordBasedFileManager::filterAttributes
+void RBFM_ScanIterator::fillAttrIndices() {
+    for(int i = 0 ; i < recordDescriptor.size() ; ++i) {
+        if(attributeNames.find(recordDescriptor[i].name) != attributeNames.end()) {
+            attrToExtractInd.push_back(i);
+        }
+        if(recordDescriptor[i].name == conditionAttribute) {
+            attrForCompInd = i;
+        }
+    }
+}
+
+RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+    byte record[PAGE_SIZE]; //we have to read the attribute for comparison into an array of a page size
+                            //because in case of a string attribute, it would be hard to predict its size
+    for( ; true ; ++rid.slotNum) { //iterate over table till we find next record satisfying the condition
+        if(RecordBasedFileManager::instance().moveToNextAvailableRecord(fileHandle, currRID) == RBFM_EOF) {
+            return RBFM_EOF;
+        }
+        RC rc = RecordBasedFileManager::instance().readAttribute(fileHandle, recordDescriptor, rid, conditionAttribute, record);
+        if(rc != 0) {
+            return rc;
+        }
+        if(record[0] != 0) { //some bit is set in the null info field
+            continue;
+        }
+
+        if(recordDescriptor[attrForCompInd].type == AttrType::TypeInt) {
+            if(performCompOp<int>(*reinterpret_cast<const int*>(value), *reinterpret_cast<int*>(record+1))) {
+                break;
+            }
+        }
+        else if(recordDescriptor[attrForCompInd].type == AttrType::TypeReal) {
+            if(performCompOp<float>(*reinterpret_cast<const float*>(value), *reinterpret_cast<float*>(record+1))) {
+                break;
+            }
+        }
+        else { //recordDescriptor[attrForCompInd].type == AttrType::TypeVarChar
+            unsigned* recordLen = reinterpret_cast<unsigned *>(record+1);
+            char* recordCont = reinterpret_cast<char*>(record+2);
+            const unsigned* valueLen = reinterpret_cast<const unsigned*>(value);
+            const char* valueCont = reinterpret_cast<const char*>(value)+1;
+            if(performCompOp<string>(string(valueCont, *valueLen), string(recordCont, *recordLen))) {
+                break;
+            }
+        }
+    }
+    return RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, rid, record, attrToExtractInd);
+}
+
+/*
+typedef enum {
+    EQ_OP = 0, // no condition// =
+    LT_OP,      // <
+    LE_OP,      // <=
+    GT_OP,      // >
+    GE_OP,      // >=
+    NE_OP,      // !=
+    NO_OP       // no condition
+} CompOp;
+ */
+template <typename T>
+bool RBFM_ScanIterator::performCompOp(const T& value, const T& actualValue) {
+    if(compOp == CompOp::EQ_OP) {
+        return actualValue == value;
+    }
+    else if(compOp == CompOp::LT_OP) {
+        return actualValue < value;
+    }
+    else if(compOp == CompOp::LE_OP) {
+        return actualValue <= value;
+    }
+    else if(compOp == CompOp::GT_OP) {
+        return actualValue > value;
+    }
+    else if(compOp == CompOp::GE_OP) {
+        return actualValue >= value;
+    }
+    else if(compOp == CompOp::NE_OP) {
+        return actualValue != value;
+    }
+    return true; //(compOp == CompOp::NO_OP)
 }
