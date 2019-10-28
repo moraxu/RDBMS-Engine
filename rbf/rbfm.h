@@ -62,8 +62,8 @@ class RBFM_ScanIterator {
     const void *value;
     std::set<std::string> attributeNames;
     RID currRID = { 0, 0 };
-    unsigned attrForCompInd;
-    std::vector<unsigned> attrToExtractInd;
+    unsigned attrForCompInd; //Index of atrribute to be compared
+    std::vector<unsigned> attrToExtractInd; //Index of atrribute to be extracted
 
 public:
     RBFM_ScanIterator() = default;;

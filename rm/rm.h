@@ -102,8 +102,8 @@ protected:
 
 private:
     static RelationManager *_relation_manager;
-    std::vector<Attribute> tablesDescriptor;
-    std::vector<Attribute> columnDescriptor;
+    std::vector<Attribute> tablesDescriptor; //Descriptor of 'Tables' which is  initialized when object created
+    std::vector<Attribute> columnDescriptor; //Descriptor of 'Columns' which is  initialized when object created
     RecordBasedFileManager rbfm;
     static unsigned lastTableID;
     static unsigned numberOfColumnsTblFields;

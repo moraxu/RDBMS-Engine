@@ -268,7 +268,7 @@ Important Note: The first field(offset field) in slot is set to -1 if deleted;
 The second field(length field) is set to -1 if the slot is tombstone. If so, the record content is filled with the actual RID.
 **/
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                        const RID &rid) {
+    onst RID &rid) {
     unsigned p = rid.pageNum,s = rid.slotNum;
     byte pageStart[PAGE_SIZE];
     RC rcode = fileHandle.readPage(p,pageStart);
@@ -470,7 +470,7 @@ RC RecordBasedFileManager::filterAttributes(FileHandle &fileHandle, const std::v
         RID cur;
         cur.pageNum = *(unsigned *)(page + fieldOffsetsLocation);
         cur.slotNum = *(unsigned *)(page + fieldOffsetsLocation + sizeof(unsigned));
-        return readRecord(fileHandle,recordDescriptor,cur,data);
+        return filterAttributes(fileHandle,recordDescriptor,cur,data);
     }
 
     const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attributesToExtract.size()/8.0));
@@ -478,7 +478,8 @@ RC RecordBasedFileManager::filterAttributes(FileHandle &fileHandle, const std::v
 
     for(unsigned i = 0, *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) ; i < attributesToExtract.size() ; ++i) {
         unsigned attrInd = attributesToExtract[i];
-        fieldOffsets += attrInd;
+        if(i == 0) fieldOffsets += attributesToExtract[i];
+        else fieldOffsets += (attributesToExtract[i]-attributesToExtract[i-1]);
 
         if(*fieldOffsets == *(fieldOffsets+1)) {
             unsigned byteInNullInfoField = i/8;
@@ -503,7 +504,7 @@ RC RecordBasedFileManager::filterAttributes(FileHandle &fileHandle, const std::v
 
 //The actual data in *data is also prefixed with a null byte, just as in format used in the other RecordBasedFileManager's methods
 RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                         const RID &rid, const std::string &attributeName, void *data) {
+    const RID &rid, const std::string &attributeName, void *data) {
     unsigned attributeIndex = -1;
     for(int i = 0 ; i < recordDescriptor.size() ; ++i) {
         if(recordDescriptor[i].name == attributeName) {
@@ -567,21 +568,21 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         }
 
         if(recordDescriptor[attrForCompInd].type == AttrType::TypeInt) {
-            if(performCompOp<int>(*reinterpret_cast<const int*>(value), *reinterpret_cast<int*>(record+1))) {
+            if(performCompOp(*reinterpret_cast<const int*>(value), *reinterpret_cast<int*>(record+1))) {
                 break;
             }
         }
         else if(recordDescriptor[attrForCompInd].type == AttrType::TypeReal) {
-            if(performCompOp<float>(*reinterpret_cast<const float*>(value), *reinterpret_cast<float*>(record+1))) {
+            if(performCompOp(*reinterpret_cast<const float*>(value), *reinterpret_cast<float*>(record+1))) {
                 break;
             }
         }
         else { //recordDescriptor[attrForCompInd].type == AttrType::TypeVarChar
             unsigned* recordLen = reinterpret_cast<unsigned *>(record+1);
-            char* recordCont = reinterpret_cast<char*>(record+2);
+            char* recordCont = reinterpret_cast<char*>(record+1+sizeof(unsigned));
             const unsigned* valueLen = reinterpret_cast<const unsigned*>(value);
-            const char* valueCont = reinterpret_cast<const char*>(value)+1;
-            if(performCompOp<string>(string(valueCont, *valueLen), string(recordCont, *recordLen))) {
+            const char* valueCont = reinterpret_cast<const char*>(value+sizeof(unsigned));
+            if(performCompOp(string(valueCont, *valueLen), string(recordCont, *recordLen))) {
                 break;
             }
         }

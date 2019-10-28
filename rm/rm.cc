@@ -12,7 +12,7 @@ RelationManager &RelationManager::instance() {
 }
 
 RelationManager::RelationManager(){
-    rbfm = RecordBasedFileManager();
+    rbfm = RecordBasedFileManager::instance();
     createTableDescriptor();
     createColumnDescriptor();
     createCatalog();
@@ -124,18 +124,24 @@ string RelationManager::getFileName(const std::string &tableName) {
 
     byte page[PAGE_SIZE];
     RID rid;
-    RBFM_ScanIterator it = RBFM_ScanIterator();
-    std::vector<string> attr = {"table-id","table-name","file-name"};
-    rbfm.scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
 
-    if(it.getNextRecord(rid,page) != RBFM_EOF){
+
+    RM_ScanIterator tableIt;
+    //The second-to-last parameter of scan should be  the attribute descriptor of  'Tables'.
+    //std::vector<std::string> attributeNames(1, "table-id");
+    std::vector<string> attr = {"table-id","table-name","file-name"};
+    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attr, tableIt);
+
+    unsigned bytes[2];  //not sure if needed though
+
+    if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
         unsigned nullFieldLen = ceil(attr.size()/8.0);
         page += nullFieldLen+sizeof(unsigned);
         unsigned tableNameLen = *(unsigned *)page;
         page += sizeof(unsigned);
         res = string((char *)page,tableNameLen);
     }
-    it.close();
+    tableIt.close();
 
     rc = closeFile(fh);
     //if(rc != 0)
@@ -305,8 +311,10 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     }
 
     RM_ScanIterator tableIt;
-    std::vector<std::string> attributeNames(1, "table-id");
-    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attributeNames, tableIt);
+    //The second-to-last parameter of scan should be  the attribute names of  'Tables'.
+    //std::vector<std::string> attributeNames(1, "table-id");
+    std::vector<string> attr = {"table-id","table-name","file-name"};
+    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attr, tableIt);
 
     RID rid;
     unsigned bytes[2];  //not sure if needed though
@@ -326,6 +334,9 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     for( ; counter < attrs.size() && (rc = tableIt.getNextTuple(rid, bytes)) != RM_EOF ; ++counter) {
         deleteTuple("Columns", rid);
     }
+    //Iterator needs to be closed
+    it.close();
+
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
         return rc;
     }
@@ -539,7 +550,7 @@ RC RelationManager::scan(const std::string &tableName,
         return -1;
     }
 
-    return RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
+    return rbfm.scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
 }
 
 // Extra credit work
