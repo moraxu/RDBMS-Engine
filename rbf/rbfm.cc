@@ -470,13 +470,13 @@ RC RecordBasedFileManager::filterAttributes(FileHandle &fileHandle, const std::v
         RID cur;
         cur.pageNum = *(unsigned *)(page + fieldOffsetsLocation);
         cur.slotNum = *(unsigned *)(page + fieldOffsetsLocation + sizeof(unsigned));
-        return readRecord(fileHandle,recordDescriptor,cur,data);
+        return filterAttributes(fileHandle,recordDescriptor,cur,data, attributesToExtract);
     }
 
     const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attributesToExtract.size()/8.0));
     std::vector<byte> readData(nullInfoFieldLength, 0);
 
-    for(unsigned i = 0, *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) ; i < attributesToExtract.size() ; ++i) {
+    for(unsigned i = 0, *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) ; i < attributesToExtract.size() ; ++i, fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation)) {
         unsigned attrInd = attributesToExtract[i];
         fieldOffsets += attrInd;
 
