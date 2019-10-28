@@ -55,12 +55,12 @@ typedef enum {
 //  rbfmScanIterator.close();
 
 class RBFM_ScanIterator {
-    FileHandle& fileHandle;
-    std::vector<Attribute> &recordDescriptor;
-    std::string &conditionAttribute;
+    FileHandle fileHandle;
+    std::vector<Attribute> recordDescriptor;
+    std::string conditionAttribute;
     CompOp compOp;
     const void *value;
-    std::set<std::string> &attributeNames;
+    std::set<std::string> attributeNames;
     RID currRID = { 0, 0 };
     unsigned attrForCompInd;
     std::vector<unsigned> attrToExtractInd;
@@ -75,7 +75,7 @@ public:
     template <typename T>
     bool performCompOp(const T& value, const T& actualValue);
 
-    FileHandle& getFileHandle() const {
+    FileHandle& getFileHandle() {
         return fileHandle;
     }
 
@@ -83,7 +83,7 @@ public:
         RBFM_ScanIterator::fileHandle = fileHandle;
     }
 
-    std::vector<Attribute> &getRecordDescriptor() const {
+    std::vector<Attribute> &getRecordDescriptor() {
         return recordDescriptor;
     }
 
@@ -91,7 +91,7 @@ public:
         RBFM_ScanIterator::recordDescriptor = recordDescriptor;
     }
 
-    std::string &getConditionAttribute() const {
+    std::string &getConditionAttribute()  {
         return conditionAttribute;
     }
 
@@ -115,7 +115,7 @@ public:
         RBFM_ScanIterator::value = value;
     }
 
-    std::set<std::string> &getAttributeNames() const {
+    std::set<std::string> &getAttributeNames()  {
         return attributeNames;
     }
 
@@ -128,7 +128,7 @@ public:
     // "data" follows the same format as RecordBasedFileManager::insertRecord().
     RC getNextRecord(RID &rid, void *data);
 
-    RC close() { return -1; };
+    RC close() { return PagedFileManager::instance().closeFile(fileHandle); };
 };
 
 class RecordBasedFileManager {

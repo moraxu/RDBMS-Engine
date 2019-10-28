@@ -520,9 +520,13 @@ RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vect
 //This is a bad design, but we have to follow that. We basically need to use scan to initialize/change RBFM_ScanIterator,
 //I only introduced setters/getters in order not to declare friendship between classes. We're not supposed to invoke
 //RBFM_ScanIterator's setter classes on their own, because at the end of our changes we should also invoke RBFM_ScanIterator::fillAttrIndices(), like here
-RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                const std::string &conditionAttribute, const CompOp compOp, const void *value,
-                                const std::vector<std::string> &attributeNames, RBFM_ScanIterator &rbfm_ScanIterator) {
+RC RecordBasedFileManager::scan(FileHandle &fileHandle,
+                                const std::vector<Attribute> &recordDescriptor,
+                                const std::string &conditionAttribute,
+                                const CompOp compOp,
+                                const void *value,
+                                const std::vector<std::string> &attributeNames,
+                                RBFM_ScanIterator &rbfm_ScanIterator) {
     rbfm_ScanIterator.setFileHandle(fileHandle);
     rbfm_ScanIterator.setRecordDescriptor(recordDescriptor);
     rbfm_ScanIterator.setConditionAttribute(conditionAttribute);

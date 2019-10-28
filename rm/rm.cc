@@ -86,7 +86,7 @@ WHEN return value < 0:
 FILE OPEN ERROR: -1
 NO FILE ASSOCIATED WITH TABLENAME: -2
 **************************************/
-RC RelationManager::getIdFromTableName(const std::string &tableName){
+int RelationManager::getIdFromTableName(const std::string &tableName){
     FileHandle fh;
     int rc = rbfm.openFile("Tables",fh);
     if(rc != 0)
@@ -275,7 +275,48 @@ RC RelationManager::createTable(const std::string &tableName, const std::vector<
 }
 
 RC RelationManager::deleteTable(const std::string &tableName) {
-    return -1;
+    int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return tableID;
+    }
+
+    std::vector<Attribute> attrs;
+    RC rc = getAttributes(tableName, attrs);
+    if(rc != 0) {
+        return -1;
+    }
+
+    if(PagedFileManager::instance().destroyFile(tableName) != 0) {
+        return -1;
+    }
+
+    RM_ScanIterator tableIt;
+    std::vector<std::string> attributeNames(1, "table-id");
+    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attributeNames, tableIt);
+
+    RID rid;
+    unsigned bytes[2];  //not sure if needed though
+    rc = tableIt.getNextTuple(rid, bytes);
+    if(rc != 0) {
+        return rc;
+    }
+    //We first delete one row corresponding to this table in the system catalog "Table"
+    rc = deleteTuple("Tables", rid);
+    if(rc != 0) {
+        return rc;
+    }
+
+    //We then delete all of the rows corresponding to table's columns in the system catalog "Columns"
+    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNames, tableIt);
+    int counter = 0;
+    for( ; counter < attrs.size() && (rc = tableIt.getNextTuple(rid, bytes)) != RM_EOF ; ++counter) {
+        deleteTuple("Columns", rid);
+    }
+    if(counter < attrs.size()) { //error occurred, other than RM_EOF
+        return rc;
+    }
+
+    return 0;
 }
 
 /**************************************
@@ -421,12 +462,24 @@ RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void
 }
 
 RC RelationManager::printTuple(const std::vector<Attribute> &attrs, const void *data) {
-    return -1;
+    return RecordBasedFileManager::instance().printRecord(attrs, data);
 }
 
 RC RelationManager::readAttribute(const std::string &tableName, const RID &rid, const std::string &attributeName,
                                   void *data) {
-    return -1;
+    FileHandle fh;
+    RC rc = openFile(tableName,fh);
+    if(rc != 0) {
+        return -1;
+    }
+
+    std::vector<Attribute> attrs;
+    rc = getAttributes(tableName, attrs);
+    if(rc != 0) {
+        return -1;
+    }
+
+    return RecordBasedFileManager::instance().readAttribute(fh, attrs, rid, attributeName, data);
 }
 
 RC RelationManager::scan(const std::string &tableName,
@@ -435,7 +488,19 @@ RC RelationManager::scan(const std::string &tableName,
                          const void *value,
                          const std::vector<std::string> &attributeNames,
                          RM_ScanIterator &rm_ScanIterator) {
-    return -1;
+    FileHandle fh;
+    RC rc = openFile(tableName,fh);
+    if(rc != 0) {
+        return -1;
+    }
+
+    std::vector<Attribute> attrs;
+    rc = getAttributes(tableName, attrs);
+    if(rc != 0) {
+        return -1;
+    }
+
+    return RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
 }
 
 // Extra credit work
