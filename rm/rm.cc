@@ -5,9 +5,8 @@ using namespace std;
 RelationManager *RelationManager::_relation_manager = nullptr;
 
 //Change return type to RelationManager *
-RelationManager *RelationManager::instance() {
-    if (!_relation_manager)
-        _relation_manager = RelationManager::new RelationManager();
+RelationManager &RelationManager::instance() {
+    static _relation_manager = RelationManager();
     return _relation_manager;
 }
 
@@ -74,30 +73,40 @@ RC RelationManager::createFile(const std::string &fileName){
     return rbfm.createFile(fileName);
 }
 
+RC RelationManager::closeFile(FileHandle &fileHandle){
+    return rbfm.closeFile(fileHandle);
+}
+
 /**************************************
 WHEN return value < 0:
 FILE OPEN ERROR: -1
-NO FILE ASSOCIATED WITH TABLENAME: -2
+FILE CLOSE ERROR: -2
+NO FILE ASSOCIATED WITH TABLENAME: -3
 **************************************/
 RC RelationManager::getIdFromTableName(const std::string &tableName){
     FileHandle fh;
     int rc = rbfm.openFile("Tables",fh);
     if(rc != 0)
-        return rc;
+        return -1;
 
     byte page[PAGE_SIZE];
     RID rid;
     string res;
     RBFM_ScanIterator it = RBFM_ScanIterator();
     std::vector<string> attr = {"table-id","table-name","file-name"};
-    rbfm.scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName,attr,it);
+    rbfm.scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
 
     if(it.getNextRecord(rid,page) != RBFM_EOF){
         unsigned nullFieldLen = ceil(attr.size()/8.0);
         page += nullFieldLen;
         return *(unsigned *)page;
     }
-    return -2;
+    it.close();
+    rc = closeFile(fh);
+    if(rc != 0)
+        return -2;
+
+    return -3;
 }
 
 string RelationManager::getFileName(const std::string &tableName) {
@@ -110,7 +119,7 @@ string RelationManager::getFileName(const std::string &tableName) {
     RID rid;
     RBFM_ScanIterator it = RBFM_ScanIterator();
     std::vector<string> attr = {"table-id","table-name","file-name"};
-    rbfm.scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName,attr,it);
+    rbfm.scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
 
     if(it.getNextRecord(rid,page) != RBFM_EOF){
         unsigned nullFieldLen = ceil(attr.size()/8.0);
@@ -119,6 +128,11 @@ string RelationManager::getFileName(const std::string &tableName) {
         page += sizeof(unsigned);
         res = string((char *)page,tableNameLen);
     }
+    it.close();
+
+    rc = closeFile(fh);
+    //if(rc != 0)
+    //   return string();
     return res;
 }
 
@@ -147,6 +161,7 @@ WHEN return value < 0:
 FILE OPEN ERROR: -1
 NO FILE ASSOCIATED WITH TABLENAME: -2
 SCAN ERROR: -3
+FILE CLOSE ERROR: -4
 **************************************/
 RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
     int id = getIdFromTableName(tableName);
@@ -184,6 +199,10 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
         tmp.length = *(unsigned *)cur;
         attrs.push_back(tmp);
     }
+    it.close();
+    rc = closeFile(fh);
+    if(rc != 0)
+        return -4;
 
     return 0;
 }
@@ -193,6 +212,7 @@ WHEN return value < 0:
 FILE OPEN ERROR: -1
 FAIL TO GET ATTRIBUTE: -2
 FAIL TO INSERT: -3
+FILE CLOSE ERROR: -4
 **************************************/
 RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
     FileHandle fh;
@@ -209,6 +229,10 @@ RC RelationManager::insertTuple(const std::string &tableName, const void *data, 
     if(rc < 0)
         return -3;
 
+    rc = closeFile(fh);
+    if(rc != 0)
+        return -4;
+
     return 0;
 }
 
@@ -217,6 +241,7 @@ WHEN return value < 0:
 FILE OPEN ERROR: -1
 FAIL TO GET ATTRIBUTE: -2
 FAIL TO DELETE: -3
+FILE CLOSE ERROR: -4
 **************************************/
 RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
     FileHandle fh;
@@ -233,6 +258,10 @@ RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
     if(rc < 0)
         return -3;
 
+    rc = closeFile(fh);
+    if(rc != 0)
+        return -4;
+
     return 0;
 }
 
@@ -241,6 +270,7 @@ WHEN return value < 0:
 FILE OPEN ERROR: -1
 FAIL TO GET ATTRIBUTE: -2
 FAIL TO UPDATE: -3
+FILE CLOSE ERROR: -4
 **************************************/
 RC RelationManager::updateTuple(const std::string &tableName, const void *data, const RID &rid) {
     FileHandle fh;
@@ -257,6 +287,10 @@ RC RelationManager::updateTuple(const std::string &tableName, const void *data, 
     if(rc < 0)
         return -3;
 
+    rc = closeFile(fh);
+    if(rc != 0)
+        return -4;
+
     return 0;
 }
 
@@ -265,6 +299,7 @@ WHEN return value < 0:
 FILE OPEN ERROR: -1
 FAIL TO GET ATTRIBUTE: -2
 FAIL TO READ: -3
+FILE CLOSE ERROR: -4
 **************************************/
 RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void *data) {
     FileHandle fh;
@@ -280,6 +315,10 @@ RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void
     rc = rbfm.readRecord(fh,attrs,rid,data);
     if(rc < 0)
         return -3;
+
+    rc = closeFile(fh);
+    if(rc != 0)
+        return -4;
 
     return 0;
 }

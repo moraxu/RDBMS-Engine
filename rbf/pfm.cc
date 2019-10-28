@@ -28,11 +28,11 @@ RC PagedFileManager::createFile(const std::string &fileName) {
     if(!fp)
         return -1;
 
-    unsigned  cnt[4];
+    unsigned  cnt[PAGE_SIZE];
     memset(cnt,0,sizeof(cnt));
     //cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
     fseek(fp,0,SEEK_SET);
-    fwrite(cnt,sizeof(unsigned),4,fp);
+    fwrite(cnt,1,PAGE_SIZE,fp);
     //if fp is not closed,there could be undefined behaviors, e.g.  counter value undefined.
     //This is because when two file descriptors exist concurrently, they read like the other never writes.(they read original data)
     fclose(fp);
@@ -61,7 +61,7 @@ RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandl
     fseek(fileHandle.fp,0,SEEK_SET);
     fread(cnt,sizeof(unsigned),4,fileHandle.fp);
     fileHandle.readPageCounter = cnt[0];
-    fileHandle.writePageCounter = cnt[1];
+    fileHandle.writePageCounter =  cnt[1];
     fileHandle.appendPageCounter = cnt[2];
     fileHandle.noPages = cnt[3];
     //cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
@@ -101,7 +101,7 @@ RC FileHandle::readPage(PageNum pageNum, void *data) {
     }
     
     //NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
-    fseek( fp, 4*sizeof(unsigned)+pageNum*PAGE_SIZE, SEEK_SET );
+    fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
     unsigned res = fread(data,sizeof(char),PAGE_SIZE,fp);
     //File read error!
     if(res != PAGE_SIZE && feof(fp) != EOF)
@@ -120,7 +120,7 @@ RC FileHandle::writePage(PageNum pageNum, const void *data) {
     }
     
     //NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
-    fseek( fp, 4*sizeof(unsigned)+pageNum*PAGE_SIZE, SEEK_SET );
+    fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
     unsigned res = fwrite(data,sizeof(char),PAGE_SIZE,fp);
     //File write error!
     if(res != PAGE_SIZE)

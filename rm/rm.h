@@ -24,7 +24,7 @@ public:
 // Relation Manager
 class RelationManager {
 public:
-    static RelationManager *instance();
+    static RelationManager &instance();
 
     RC createTableDescriptor();
 
@@ -33,6 +33,8 @@ public:
     RC openFile(const std::string &tableName,FileHandle &fileHandle);
 
     RC createFile(const std::string &fileName);
+
+    RC closeFile(FileHandle &fileHandle);
 
     RC getIdFromTableName(const std::string &tableName);
 
