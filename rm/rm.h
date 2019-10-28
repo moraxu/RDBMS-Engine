@@ -38,6 +38,12 @@ public:
 
     string getFileName(const std::string &tableName);
 
+    RC insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid);
+
+    void createTableTableRow(const unsigned& tableID, const std::string &tableName, std::vector<byte>& bytesToWrite);
+
+    void createColumnTableRow(const unsigned& tableID, const Attribute &attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite);
+
     RC createCatalog();
 
     RC deleteCatalog();
@@ -87,6 +93,8 @@ private:
     std::vector<Attribute> tablesDescriptor;
     std::vector<Attribute> columnDescriptor;
     RecordBasedFileManager rbfm;
+    static unsigned lastTableID;
+    static unsigned numberOfColumnsTblFields;
 };
 
 #endif

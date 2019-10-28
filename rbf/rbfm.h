@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <climits>
 
 #include "pfm.h"
@@ -54,15 +55,78 @@ typedef enum {
 //  rbfmScanIterator.close();
 
 class RBFM_ScanIterator {
+    FileHandle& fileHandle;
+    std::vector<Attribute> &recordDescriptor;
+    std::string &conditionAttribute;
+    CompOp compOp;
+    const void *value;
+    std::set<std::string> &attributeNames;
+    RID currRID = { 0, 0 };
+    unsigned attrForCompInd;
+    std::vector<unsigned> attrToExtractInd;
+
 public:
     RBFM_ScanIterator() = default;;
 
     ~RBFM_ScanIterator() = default;;
 
+    void fillAttrIndices();
+
+    template <typename T>
+    bool performCompOp(const T& value, const T& actualValue);
+
+    FileHandle& getFileHandle() const {
+        return fileHandle;
+    }
+
+    void setFileHandle(FileHandle &fileHandle) {
+        RBFM_ScanIterator::fileHandle = fileHandle;
+    }
+
+    std::vector<Attribute> &getRecordDescriptor() const {
+        return recordDescriptor;
+    }
+
+    void setRecordDescriptor(const std::vector<Attribute> &recordDescriptor) {
+        RBFM_ScanIterator::recordDescriptor = recordDescriptor;
+    }
+
+    std::string &getConditionAttribute() const {
+        return conditionAttribute;
+    }
+
+    void setConditionAttribute(const std::string &conditionAttribute) {
+        RBFM_ScanIterator::conditionAttribute = conditionAttribute;
+    }
+
+    CompOp getCompOp() const {
+        return compOp;
+    }
+
+    void setCompOp(CompOp compOp) {
+        RBFM_ScanIterator::compOp = compOp;
+    }
+
+    const void* getValue() const {
+        return value;
+    }
+
+    void setValue(const void *value) {
+        RBFM_ScanIterator::value = value;
+    }
+
+    std::set<std::string> &getAttributeNames() const {
+        return attributeNames;
+    }
+
+    void setAttributeNames(const std::vector<std::string> &attributeNames) {
+        RBFM_ScanIterator::attributeNames.insert(attributeNames.begin(), attributeNames.end());
+    }
+
     // Never keep the results in the memory. When getNextRecord() is called,
     // a satisfying record needs to be fetched from the file.
     // "data" follows the same format as RecordBasedFileManager::insertRecord().
-    RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
+    RC getNextRecord(RID &rid, void *data);
 
     RC close() { return -1; };
 };
@@ -115,6 +179,10 @@ public:
     // (e.g., age: 24  height: 6.1  salary: 9000
     //        age: NULL  height: 7.5  salary: 7500)
     RC printRecord(const std::vector<Attribute> &recordDescriptor, const void *data);
+
+    RC moveToNextAvailableRecord(FileHandle& fileHandle, RID& rid);
+
+    RC filterAttributes(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data, const std::vector<unsigned> &attributesToExtract);
 
     /*****************************************************************************************************
     * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *
