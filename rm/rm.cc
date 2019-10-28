@@ -306,10 +306,11 @@ RC RelationManager::deleteTable(const std::string &tableName) {
         return rc;
     }
 
+    RM_ScanIterator columnIt;
     //We then delete all of the rows corresponding to table's columns in the system catalog "Columns"
-    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, tableIt);
+    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, columnIt);
     int counter = 0;
-    for( ; counter < attrs.size() && (rc = tableIt.getNextTuple(rid, nullptr)) != RM_EOF ; ++counter) {
+    for( ; counter < attrs.size() && (rc = columnIt.getNextTuple(rid, nullptr)) != RM_EOF ; ++counter) {
         deleteTuple("Columns", rid);
     }
     if(counter < attrs.size()) { //error occurred, other than RM_EOF

@@ -554,11 +554,17 @@ void RBFM_ScanIterator::fillAttrIndices() {
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     byte record[PAGE_SIZE]; //we have to read the attribute for comparison into an array of a page size
                             //because in case of a string attribute, it would be hard to predict its size
-    for( ; true ; ++rid.slotNum) { //iterate over table till we find next record satisfying the condition
+
+    //Throughout the function, we keep iterating over RIDs and keep the most current one in currRID.
+    //At the end of the function, we copy its members (page number and slot number) into "rid" parameter.
+    //Then we increment slot number of the currID (++currRID.slotNum) so that next invocation of this function
+    //read next record in the file (if there is any)
+
+    for( ; true ; ++currRID.slotNum) { //iterate over table till we find next record satisfying the condition
         if(RecordBasedFileManager::instance().moveToNextAvailableRecord(fileHandle, currRID) == RBFM_EOF) {
             return RBFM_EOF;
         }
-        RC rc = RecordBasedFileManager::instance().readAttribute(fileHandle, recordDescriptor, rid, conditionAttribute, record);
+        RC rc = RecordBasedFileManager::instance().readAttribute(fileHandle, recordDescriptor, currRID, conditionAttribute, record);
         if(rc != 0) {
             return rc;
         }
@@ -586,7 +592,14 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
             }
         }
     }
-    return RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, rid, data, attrToExtractInd);
+    RC rc = RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, currRID, data, attrToExtractInd);
+    if(rc != 0) {
+        return rc;
+    }
+    rid.slotNum = currRID.slotNum;
+    rid.pageNum = currRID.pageNum;
+    ++currRID.slotNum;
+    return 0;
 }
 
 /*
