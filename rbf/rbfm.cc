@@ -586,7 +586,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
             }
         }
     }
-    return RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, rid, record, attrToExtractInd);
+    return RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, rid, data, attrToExtractInd);
 }
 
 /*

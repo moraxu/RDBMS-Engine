@@ -291,12 +291,12 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     }
 
     RM_ScanIterator tableIt;
-    std::vector<std::string> attributeNames(1, "table-id");
-    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attributeNames, tableIt);
+    std::vector<std::string> attributeNamesEmpty;   //we only want to get RID, not any fields
+    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, tableIt);
 
     RID rid;
-    unsigned bytes[2];  //not sure if needed though
-    rc = tableIt.getNextTuple(rid, bytes);
+    void* dummyPtr = nullptr;   //we only want to get RID, not any fields
+    rc = tableIt.getNextTuple(rid, dummyPtr);
     if(rc != 0) {
         return rc;
     }
@@ -307,9 +307,9 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     }
 
     //We then delete all of the rows corresponding to table's columns in the system catalog "Columns"
-    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNames, tableIt);
+    scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, tableIt);
     int counter = 0;
-    for( ; counter < attrs.size() && (rc = tableIt.getNextTuple(rid, bytes)) != RM_EOF ; ++counter) {
+    for( ; counter < attrs.size() && (rc = tableIt.getNextTuple(rid, nullptr)) != RM_EOF ; ++counter) {
         deleteTuple("Columns", rid);
     }
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
