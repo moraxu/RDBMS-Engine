@@ -88,9 +88,7 @@ std::string RelationManager::getFileName(const std::string &tableName) {
         cur += sizeof(unsigned);
         res = string((char *)cur,fileNameLen);
     }
-    tableIt.close();
-
-    rc = closeFile(fh);
+    rc = tableIt.close();
     if(rc != 0)
        return string();
     return res;
@@ -143,8 +141,7 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
         res = *(unsigned *)cur;
         cout<<cnt++<<" "<<res<<endl;
     }
-    it.close();
-    rc = closeFile(fh);
+    rc = it.close();
     if(rc != 0)
         return -2;
 
@@ -161,7 +158,7 @@ FAIL TO INSERT: -3
 **************************************/
 RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid) {
     FileHandle fh;
-    int rc = openFile(tableName,fh);
+    int rc = RecordBasedFileManager::instance().openFile(tableName,fh);
     if(rc != 0)
         return -1;
 
@@ -337,6 +334,7 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     }
     //Iterator needs to be closed
     tableIt.close();
+    columnIt.close();
 
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
         return rc;
@@ -394,8 +392,8 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
         attrs.push_back(tmp);
         cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
     }
-    it.close();
-    rc = closeFile(fh);
+
+    rc = it.close();
     if(rc != 0)
         return -4;
 
