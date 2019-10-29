@@ -566,24 +566,29 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     //read next record in the file (if there is any)
 
     for( ; true ; ++currRID.slotNum) { //iterate over table till we find next record satisfying the condition
+        cout << "Beginning of getNextRecord's for loop, currRID.slotNum=" << currRID.slotNum << "\n";
         if(RecordBasedFileManager::instance().moveToNextAvailableRecord(fileHandle, currRID) == RBFM_EOF) {
+            cout << "\tReturn EOF\n";
             return RBFM_EOF;
         }
         RC rc = RecordBasedFileManager::instance().readAttribute(fileHandle, recordDescriptor, currRID, conditionAttribute, record);
         if(rc != 0) {
             return rc;
         }
+        cout << "\treadAttribute succedded\n";
         if(record[0] != 0) { //some bit is set in the null info field
             continue;
         }
 
         if(recordDescriptor[attrForCompInd].type == AttrType::TypeInt) {
             if(performCompOp(*reinterpret_cast<const int*>(value), *reinterpret_cast<int*>(record+1))) {
+                cout << "\tpassed int test\n";
                 break;
             }
         }
         else if(recordDescriptor[attrForCompInd].type == AttrType::TypeReal) {
             if(performCompOp(*reinterpret_cast<const float*>(value), *reinterpret_cast<float*>(record+1))) {
+                cout << "\tpassed float test\n";
                 break;
             }
         }
@@ -593,6 +598,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
             const unsigned* valueLen = reinterpret_cast<const unsigned*>(value);
             const char* valueCont = reinterpret_cast<const char*>(value+sizeof(unsigned));
             if(performCompOp(string(valueCont, *valueLen), string(recordCont, *recordLen))) {
+                cout << "\tpassed string test\n";
                 break;
             }
         }
@@ -601,6 +607,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     if(rc != 0) {
         return rc;
     }
+    cout << "End of getNextRecord, currRID.slotNum=" << currRID.slotNum << ", currRID.pageNum=" << currRID.pageNum <<"\n";
     rid.slotNum = currRID.slotNum;
     rid.pageNum = currRID.pageNum;
     ++currRID.slotNum;

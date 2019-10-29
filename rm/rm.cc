@@ -18,7 +18,7 @@ RelationManager::RelationManager(){
 }
 
 RelationManager::~RelationManager() {
-    deleteCatalog();
+
 }
 
 RelationManager::RelationManager(const RelationManager &) = default;
@@ -228,10 +228,10 @@ void RelationManager::createColumnTableRow(const unsigned& tableID, const Attrib
 }
 
 RC RelationManager::createCatalog() {
-    if(PagedFileManager::instance().createFile("Tables") != 0) {
+    if(RecordBasedFileManager::instance().createFile("Tables") != 0) {
         return -1;
     }
-    if(PagedFileManager::instance().createFile("Columns") != 0) {
+    if(RecordBasedFileManager::instance().createFile("Columns") != 0) {
         return -1;
     }
 
@@ -239,10 +239,10 @@ RC RelationManager::createCatalog() {
 }
 
 RC RelationManager::deleteCatalog() {
-    if(PagedFileManager::instance().destroyFile("Tables") != 0) {
+    if(RecordBasedFileManager::instance().destroyFile("Tables") != 0) {
         return -1;
     }
-    if(PagedFileManager::instance().destroyFile("Columns") != 0) {
+    if(RecordBasedFileManager::instance().destroyFile("Columns") != 0) {
         return -1;
     }
     return 0;
@@ -278,7 +278,6 @@ RC RelationManager::createTableHelper(const std::string &tableName, const std::v
 
 RC RelationManager::deleteTable(const std::string &tableName) {
     int tableID = getIdFromTableName(tableName);
-    cout << "tableID = " << tableID << "\n";
     if(tableID < 1) {
         return tableID;
     }
