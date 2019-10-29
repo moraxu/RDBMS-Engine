@@ -120,6 +120,7 @@ FILE CLOSE ERROR: -2
 NO FILE ASSOCIATED WITH TABLENAME: -3
 **************************************/
 int RelationManager::getIdFromTableName(const std::string &tableName){
+    cout<<"In getIdFromTableName:"<<endl;
     FileHandle fh;
     int res = -3,cnt = 1;
     int rc = RecordBasedFileManager::instance().openFile("Tables",fh);
@@ -129,12 +130,12 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
 
     byte page[sizeof(unsigned)+1];
     RID rid;
-    RM_ScanIterator tableIt;
+    RBFM_ScanIterator it;
     std::vector<string> attr = {"table-id"};
-    scan("Tables","table-name",EQ_OP,tableName.c_str(),attr,tableIt);
+    RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
     cout<<cnt++<<endl;
 
-    if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
+    if(it.getNextRecord(rid,page) != RBFM_EOF){
         cout<<cnt++<<" "<<res<<endl;
         byte *cur = page;
         unsigned nullFieldLen = ceil(attr.size()/8.0);
@@ -142,7 +143,7 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
         res = *(unsigned *)cur;
         cout<<cnt++<<" "<<res<<endl;
     }
-    tableIt.close();
+    it.close();
     rc = closeFile(fh);
     if(rc != 0)
         return -2;
@@ -354,6 +355,7 @@ FILE CLOSE ERROR: -4
 NOTE: 'attrs' could be empty after this method returns 0!
 **************************************/
 RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
+    cout<<"In getAttributes:"<<endl;
     int cnt = 1;
     int id = getIdFromTableName(tableName);
     if(id < 0) return id;
@@ -367,13 +369,13 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
 
     byte page[PAGE_SIZE];
     RID rid;
-    RM_ScanIterator tableIt;
+    RBFM_ScanIterator it;
     std::vector<string> attr = {"column-name","column-type","column-length","column-position"};
-    scan("Columns", "table-id", CompOp::EQ_OP, &id, attr, tableIt);
+    RecordBasedFileManager::instance().scan(fh,columnDescriptor,"table-id", CompOp::EQ_OP, &id, attr, it);
+    cout<<cnt++<<endl;
 
     //Assume the length of content to be extracted is less than PAGE_SIZE
-    //
-    while(tableIt.getNextTuple(rid,page) != RBFM_EOF){
+    while(it.getNextRecord(rid,page) != RBFM_EOF){
         byte *cur = page;
         Attribute tmp;
         unsigned nullFieldLen = ceil(attr.size()/8.0);
@@ -392,7 +394,7 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
         attrs.push_back(tmp);
         cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
     }
-    tableIt.close();
+    it.close();
     rc = closeFile(fh);
     if(rc != 0)
         return -4;
@@ -544,10 +546,12 @@ RC RelationManager::scan(const std::string &tableName,
                          const std::vector<std::string> &attributeNames,
                          RM_ScanIterator &rm_ScanIterator) {
     FileHandle fh;
+    int cnt = 1;
     RC rc = openFile(tableName,fh);
     if(rc != 0) {
         return -1;
     }
+    cout<<cnt<<endl;
 
     std::vector<Attribute> attrs;
     rc = getAttributes(tableName, attrs);
