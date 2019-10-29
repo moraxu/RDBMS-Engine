@@ -581,28 +581,36 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         }
 
         if(recordDescriptor[attrForCompInd].type == AttrType::TypeInt) {
+            cout << "\tThe issue is in TypeInt\n";
             if(performCompOp(*reinterpret_cast<const int*>(value), *reinterpret_cast<int*>(record+1))) {
                 cout << "\tpassed int test\n";
                 break;
             }
         }
         else if(recordDescriptor[attrForCompInd].type == AttrType::TypeReal) {
+            cout << "\tThe issue is in TypeReal\n";
             if(performCompOp(*reinterpret_cast<const float*>(value), *reinterpret_cast<float*>(record+1))) {
                 cout << "\tpassed float test\n";
                 break;
             }
         }
         else { //recordDescriptor[attrForCompInd].type == AttrType::TypeVarChar
+            cout << "\tThe issue is in TypeVarChar\n";
             unsigned* recordLen = reinterpret_cast<unsigned *>(record+1);
+            cout << "\t\t1\n";
             char* recordCont = reinterpret_cast<char*>(record+1+sizeof(unsigned));
+            cout << "\t\t2\n";
             const unsigned* valueLen = reinterpret_cast<const unsigned*>(value);
-            const char* valueCont = reinterpret_cast<const char*>(value+sizeof(unsigned));
+            cout << "\t\t3\n";
+            const char* valueCont = reinterpret_cast<const char*>(reinterpret_cast<const byte*>(value)+sizeof(unsigned));
+            cout << "\t\t4 " + string(recordCont, *recordLen) + "\n";
             if(performCompOp(string(valueCont, *valueLen), string(recordCont, *recordLen))) {
                 cout << "\tpassed string test\n";
                 break;
             }
         }
     }
+    cout << "\tBefore filtering away attributes\n";
     RC rc = RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, currRID, data, attrToExtractInd);
     if(rc != 0) {
         return rc;
@@ -627,6 +635,7 @@ typedef enum {
  */
 template <typename T>
 bool RBFM_ScanIterator::performCompOp(const T& value, const T& actualValue) {
+    cout << "\t\t\tArrived in performCompOp function\n";
     if(compOp == CompOp::EQ_OP) {
         return actualValue == value;
     }

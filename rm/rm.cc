@@ -73,10 +73,17 @@ std::string RelationManager::getFileName(const std::string &tableName) {
     byte page[PAGE_SIZE];
     RID rid;
 
+    vector<byte> stringValue;
+    unsigned stringLen = tableName.length();
+    byte* stringLenPtr = reinterpret_cast<byte*>(&stringLen);
+    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.data());
+    stringValue.insert(stringValue.end(), stringLenPtr, stringLenPtr+sizeof(unsigned));
+    stringValue.insert(stringValue.end(), stringContPtr, stringContPtr+stringLen);
+
     //Filter the record based on comparison over "table-name" field, then extract "file-name" field from these filtered record
     RM_ScanIterator tableIt;
     std::vector<string> attr = {"file-name"};
-    scan("Tables", "table-name", CompOp::EQ_OP, tableName.c_str(), attr, tableIt);
+    scan("Tables", "table-name", CompOp::EQ_OP, stringValue.data(), attr, tableIt);
 
     //Assume the length of content to be extracted is less than PAGE_SIZE
     if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
@@ -127,9 +134,17 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
 
     byte page[sizeof(unsigned)+1];
     RID rid;
+
+    vector<byte> stringValue;
+    unsigned stringLen = tableName.length();
+    byte* stringLenPtr = reinterpret_cast<byte*>(&stringLen);
+    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.data());
+    stringValue.insert(stringValue.end(), stringLenPtr, stringLenPtr+sizeof(unsigned));
+    stringValue.insert(stringValue.end(), stringContPtr, stringContPtr+stringLen);
+
     RBFM_ScanIterator it;
     std::vector<string> attr = {"table-id"};
-    RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
+    RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,stringValue.data(),attr,it);
     cout<<cnt++<<endl;
 
     if(it.getNextRecord(rid,page) != RBFM_EOF){
