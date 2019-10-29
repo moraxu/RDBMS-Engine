@@ -13,7 +13,6 @@ RelationManager &RelationManager::instance() {
 RelationManager::RelationManager(){
     createTableDescriptor();
     createColumnDescriptor();
-    createCatalog();
     lastTableID = 0;
     numberOfColumnsTblFields = 5;
 }
@@ -279,6 +278,7 @@ RC RelationManager::createTableHelper(const std::string &tableName, const std::v
 
 RC RelationManager::deleteTable(const std::string &tableName) {
     int tableID = getIdFromTableName(tableName);
+    cout << "tableID = " << tableID << "\n";
     if(tableID < 1) {
         return tableID;
     }
