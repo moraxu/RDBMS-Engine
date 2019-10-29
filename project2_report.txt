@@ -1,40 +1,48 @@
 1. Basic information
-Team number (e.g., 01):
-#1 Student ID:
-#1 Student Name:
-#2 Student ID:
-#2 Student Name:
-OS (bit):
-gcc version:
+Team number (e.g., 01): 19
+#1 Student ID: 93209704
+#1 Student Name: Yuzhou GUo
+#2 Student ID: 29249325
+#2 Student Name: Michal Guzek
+OS (bit): Ubuntu 14.04 64bit
+gcc version: gcc 5.5.0
 
 
 2. Meta-data
 - Show your meta-data design (Tables and Columns table) and information about each column.
-
+There are two meta-data tables in the database:
+	Tables (table-id:int, table-name:varchar(50), file-name:varchar(50))
+	Columns(table-id:int, column-name:varchar(50), column-type:int, column-length:int, column-position:int)
+Each column is represented by a Attribute structure,with its column name,column type,column length together. The descriptor for these two tables are stored as private member variables of class RelationManager and is initialized when an object of this class is created.
 
 3. Internal Record Format
 - Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that your team hasn't implemented this feature.
+Our record format design follows the one mentioned in the textbook - it is an array of field offsets. Every field offset points to the corresponding record field (in terms of byte offset from the beginning of the record). That way, to refer to n-th field, we can skip to n-th field offset in O(1) and then look up the corresponding field also in O(1). If the record contains null(s), the adjacent field offsets point to the same location on the page. We also included field offset to the end of the record, as per instructions in the textbook.
 
 - Describe how you store a VarChar field.
-
+A VarChar field is comprised of two parts: 1)VarChar length as a 4-byte unsigned int; 2)the VarChar content itself.
 - Describe how you deal with an update and delete.
-
+Few modifications are applied on the record format with an update and delete. With a delete, the whole record is deleted, the data after it is conpacted but field offsets stored in these records remain the same since they are relative offsets. With a update, the modified record is replaced with either a new rid that is redirected to the migrated record or the new record itself. 
 
 4. Page Format
 - Show your page format design.
+We implemented page format according to the instructions in the textbook. End of the page contains directory of slots which grows in the same direction as the space occupied by records inserted, resulting in free space being coalesced in the middle of a page. 
 
 - Describe how you deal with an update and delete.
+Update and delete both comply with the following strategy: read the relevant pages into memory,modify their bits,then write back to disk.With respect to deleted slot,they both return -1;and when they find a tombstone slot, they recursively visit the slot that is pointed by the tombstone until they visit a slot that stores actual record.After that they just move records after the modified record around and modify all the page position indicators respectively.
+The design of tombstone:  In updateRecord() we assign length field of  slot of the modified record with -1 to indicate that this slot is a tombstone.The offset field of this slot remains unchanged and is pointed to a new RID which points to the actual data(acutally it could points to another tombstone).
+The design of update: When there are enough space left on the page for the modified record,we perform only some data shift and change of page format indicators(e.g. freespace offset,slot size), while if space is not enough, we use the same method as is applied in insertRecord() to find an appropriate page for inserting the modified record.
 
 - Show your page format design
 
 
 5. File Format
 - Show your file format design
-
+Heap file is used for this database,i.e. there is no order between records.
 
 6. Implementation Detail
 - Other implementation details goes here.
-
+To sequentially go through all the records within a file,scan() and iterator is used.  scan() initializes an object of class RBFM_ScanIterator and getNextRecord() return the rid and data of the record that satisfies the filter condition. Internally an RBFM_ScanIterator object stores everthing that is important for scanning a file,e.g. file handle, current rid for scanning, condition attribute,operator and compared value so that every time getNextRecord() gets called the candidate record is found quickly. PerformCompOp() is used to identify whether the candidate record satisfies the filter condition and it supports compare of all  data types supported by this database. Finally the pre-defined field set of the satisfied record is retrieved.
 
 7. Other (optional)
 - Freely use this section to tell us about things that are related to the project 2, but not related to the other sections (optional)

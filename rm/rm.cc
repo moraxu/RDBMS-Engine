@@ -4,7 +4,6 @@
 
 using namespace std;
 
-//Change return type to RelationManager *
 RelationManager &RelationManager::instance() {
     static RelationManager _relation_manager = RelationManager();
     return _relation_manager;
@@ -102,7 +101,7 @@ RC RelationManager::openFile(const std::string &tableName,FileHandle &fileHandle
     if(fn.empty())
         return -1;
 
-    return RecordBasedFileManager::instance() .openFile(fn,fileHandle);
+    return RecordBasedFileManager::instance().openFile(fn,fileHandle);
 }
 
 RC RelationManager::createFile(const std::string &fileName){
@@ -357,6 +356,8 @@ NOTE: 'attrs' could be empty after this method returns 0!
 RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
     cout<<"In getAttributes:"<<endl;
     int cnt = 1;
+    if(tableName == "Tables") return tablesDescriptor;
+    if(tableName == "Columns") return columnDescriptor;
     int id = getIdFromTableName(tableName);
     if(id < 0) return id;
     cout<<cnt++<<endl;
