@@ -12,7 +12,6 @@ RelationManager &RelationManager::instance() {
 RelationManager::RelationManager(){
     createTableDescriptor();
     createColumnDescriptor();
-    createCatalog();
     lastTableID = 0;
     numberOfColumnsTblFields = 5;
 }
@@ -64,12 +63,7 @@ RC RelationManager::createColumnDescriptor(){
 }
 
 std::string RelationManager::getFileName(const std::string &tableName) {
-    FileHandle fh;
     string res;
-    int rc = RecordBasedFileManager::instance().openFile("Tables",fh);
-    if(rc != 0)
-        return string();
-
     byte page[PAGE_SIZE];
     RID rid;
 
@@ -87,14 +81,16 @@ std::string RelationManager::getFileName(const std::string &tableName) {
         cur += sizeof(unsigned);
         res = string((char *)cur,fileNameLen);
     }
-    rc = tableIt.close();
+    int rc = tableIt.close();
     if(rc != 0)
        return string();
     return res;
 }
 
 RC RelationManager::openFile(const std::string &tableName,FileHandle &fileHandle){
-    string fn = getFileName(tableName);
+    string fn;
+    if(tableName == "Tables" || tableName == "Columns") fn = tableName;
+    else fn = getFileName(tableName);
     //No such file associated with tableName
     if(fn.empty())
         return -1;
@@ -121,6 +117,7 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
     FileHandle fh;
     int res = -3,cnt = 1;
     int rc = RecordBasedFileManager::instance().openFile("Tables",fh);
+    cout<<rc<<endl;
     if(rc != 0)
         return -1;
     cout<<cnt++<<endl;
@@ -337,25 +334,31 @@ NOTE: 'attrs' could be empty after this method returns 0!
 **************************************/
 RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
     cout<<"In getAttributes:"<<endl;
-    int cnt = 1;
-    if(tableName == "Tables") return tablesDescriptor;
-    if(tableName == "Columns") return columnDescriptor;
+    //int cnt = 1;
+    if(tableName == string("Tables")) {
+        attrs = tablesDescriptor;
+        return 0;
+    }
+    if(tableName == string("Columns")){
+        attrs = columnDescriptor;
+        return 0;
+    }     
     int id = getIdFromTableName(tableName);
     if(id < 0) return id;
-    cout<<cnt++<<endl;
+    //cout<<cnt++<<endl;
 
     FileHandle fh;
     int rc = RecordBasedFileManager::instance().openFile("Columns",fh);
     if(rc != 0)
         return -1;
-    cout<<cnt++<<endl;
+    //cout<<cnt++<<endl;
 
     byte page[PAGE_SIZE];
     RID rid;
     RBFM_ScanIterator it;
     std::vector<string> attr = {"column-name","column-type","column-length","column-position"};
     RecordBasedFileManager::instance().scan(fh,columnDescriptor,"table-id", CompOp::EQ_OP, &id, attr, it);
-    cout<<cnt++<<endl;
+    //cout<<cnt++<<endl;
 
     //Assume the length of content to be extracted is less than PAGE_SIZE
     while(it.getNextRecord(rid,page) != RBFM_EOF){
@@ -375,7 +378,7 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
 
         tmp.length = *(AttrLength *)cur;
         attrs.push_back(tmp);
-        cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
+        //cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
     }
 
     rc = it.close();
