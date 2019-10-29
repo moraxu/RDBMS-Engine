@@ -17,10 +17,7 @@ RelationManager::RelationManager(){
 }
 
 RelationManager::~RelationManager() {
-<<<<<<< HEAD
-=======
-
->>>>>>> ec91c760f786f347c369f5cab8074572876cf61b
+    
 }
 
 RelationManager::RelationManager(const RelationManager &) = default;
@@ -228,7 +225,6 @@ void RelationManager::createColumnTableRow(const unsigned& tableID, const Attrib
 }
 
 RC RelationManager::createCatalog() {
-<<<<<<< HEAD
     cout<<"In createCatalog():"<<endl;
     if(PagedFileManager::instance().createFile("Tables") != 0) {
         return -1;
