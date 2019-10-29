@@ -67,10 +67,17 @@ std::string RelationManager::getFileName(const std::string &tableName) {
     byte page[PAGE_SIZE];
     RID rid;
 
+    vector<byte> stringValue;
+    unsigned stringLen = tableName.length();
+    byte* stringLenPtr = reinterpret_cast<byte*>(&stringLen);
+    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.data());
+    stringValue.insert(stringValue.end(), stringLenPtr, stringLenPtr+sizeof(unsigned));
+    stringValue.insert(stringValue.end(), stringContPtr, stringContPtr+stringLen);
+
     //Filter the record based on comparison over "table-name" field, then extract "file-name" field from these filtered record
     RM_ScanIterator tableIt;
     std::vector<string> attr = {"file-name"};
-    scan("Tables", "table-name", CompOp::EQ_OP, tableName.c_str(), attr, tableIt);
+    scan("Tables", "table-name", CompOp::EQ_OP, stringValue.data(), attr, tableIt);
 
     //Assume the length of content to be extracted is less than PAGE_SIZE
     if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
@@ -120,22 +127,26 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
     cout<<rc<<endl;
     if(rc != 0)
         return -1;
-    cout<<cnt++<<endl;
 
     byte page[sizeof(unsigned)+1];
     RID rid;
+
+    vector<byte> stringValue;
+    unsigned stringLen = tableName.length();
+    byte* stringLenPtr = reinterpret_cast<byte*>(&stringLen);
+    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.data());
+    stringValue.insert(stringValue.end(), stringLenPtr, stringLenPtr+sizeof(unsigned));
+    stringValue.insert(stringValue.end(), stringContPtr, stringContPtr+stringLen);
+
     RBFM_ScanIterator it;
     std::vector<string> attr = {"table-id"};
-    RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
-    cout<<cnt++<<endl;
+    RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,stringValue.data(),attr,it);
 
     if(it.getNextRecord(rid,page) != RBFM_EOF){
-        cout<<cnt++<<" "<<res<<endl;
         byte *cur = page;
         unsigned nullFieldLen = ceil(attr.size()/8.0);
         cur += nullFieldLen;
         res = *(unsigned *)cur;
-        cout<<cnt++<<" "<<res<<endl;
     }
     rc = it.close();
     if(rc != 0)
@@ -162,7 +173,7 @@ RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const 
     if(rc < 0)
         return -3;
 
-    return 0;
+    return closeFile(fh);
 }
  
 /* NOTE *************************************************************************************************************
@@ -225,7 +236,6 @@ void RelationManager::createColumnTableRow(const unsigned& tableID, const Attrib
 }
 
 RC RelationManager::createCatalog() {
-    cout<<"In createCatalog():"<<endl;
     if(PagedFileManager::instance().createFile("Tables") != 0) {
         return -1;
     }
@@ -233,8 +243,13 @@ RC RelationManager::createCatalog() {
         return -1;
     }
 
-    cout<<"Tables and Columns created."<<endl;
-    return createTableHelper("Tables", columnDescriptor);
+    RC rc = createTableHelper("Tables", tablesDescriptor);
+    if(rc != 0) {
+        return  rc;
+    }
+
+    rc = createTableHelper("Columns", columnDescriptor);
+    return rc;
 }
 
 RC RelationManager::deleteCatalog() {
@@ -277,6 +292,7 @@ RC RelationManager::createTableHelper(const std::string &tableName, const std::v
 
 RC RelationManager::deleteTable(const std::string &tableName) {
     int tableID = getIdFromTableName(tableName);
+    cout << "[TableID=]" << tableID << "\n";
     if(tableID < 1) {
         return tableID;
     }
@@ -286,7 +302,8 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     if(rc != 0) {
         return -1;
     }
-
+    cout << "-----------------LEaving getAttributes\n";
+    //TODO have to print those attributes here to see if they were loaded correctly
     if(PagedFileManager::instance().destroyFile(tableName) != 0) {
         return -1;
     }
