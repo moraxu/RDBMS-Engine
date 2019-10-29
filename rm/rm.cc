@@ -87,9 +87,7 @@ std::string RelationManager::getFileName(const std::string &tableName) {
         cur += sizeof(unsigned);
         res = string((char *)cur,fileNameLen);
     }
-    tableIt.close();
-
-    rc = closeFile(fh);
+    rc = tableIt.close();
     if(rc != 0)
        return string();
     return res;
@@ -142,8 +140,7 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
         res = *(unsigned *)cur;
         cout<<cnt++<<" "<<res<<endl;
     }
-    it.close();
-    rc = closeFile(fh);
+    rc = it.close();
     if(rc != 0)
         return -2;
 
@@ -160,7 +157,7 @@ FAIL TO INSERT: -3
 **************************************/
 RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid) {
     FileHandle fh;
-    int rc = openFile(tableName,fh);
+    int rc = RecordBasedFileManager::instance().openFile(tableName,fh);
     if(rc != 0)
         return -1;
 
@@ -180,8 +177,8 @@ createTableTableRow and createColumnTableRow methods transform rows to be insert
 void RelationManager::createTableTableRow(const unsigned& tableID, const std::string& tableName, std::vector<byte>& bytesToWrite) {
     //Null field at the beginning
     const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(tablesDescriptor.size()/8.0));
-    const byte* nullInfoFieldLengthPtr = reinterpret_cast<const byte*>(&nullInfoFieldLength);
-    bytesToWrite.insert(bytesToWrite.end(), nullInfoFieldLengthPtr, nullInfoFieldLengthPtr + sizeof(nullInfoFieldLength));
+    vector<byte> emptyBytes(nullInfoFieldLength);
+    bytesToWrite.insert(bytesToWrite.end(), emptyBytes.begin(), emptyBytes.end());
 
     //Table ID
     const byte* lastTableIDPtr = reinterpret_cast<const byte*>(&tableID);
@@ -201,8 +198,8 @@ void RelationManager::createTableTableRow(const unsigned& tableID, const std::st
 void RelationManager::createColumnTableRow(const unsigned& tableID, const Attribute& attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite) {
     //Null field at the beginning
     const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(numberOfColumnsTblFields/8.0));
-    const byte* nullInfoFieldLengthPtr = reinterpret_cast<const byte*>(&nullInfoFieldLength);
-    bytesToWrite.insert(bytesToWrite.end(), nullInfoFieldLengthPtr, nullInfoFieldLengthPtr + sizeof(nullInfoFieldLength));
+    vector<byte> emptyBytes(nullInfoFieldLength);
+    bytesToWrite.insert(bytesToWrite.end(), emptyBytes.begin(), emptyBytes.end());
 
     //Table ID
     const byte* lastTableIDPtr = reinterpret_cast<const byte*>(&tableID);
@@ -238,23 +235,7 @@ RC RelationManager::createCatalog() {
         return -1;
     }
 
-    std::vector<byte> bytesToWrite;
-    createTableTableRow(++lastTableID, "Tables", bytesToWrite);
-    RID rid;
-    RC rc = insertCatalogTableTuple("Tables", tablesDescriptor, bytesToWrite.data(), rid);
-    if(rc != 0) {
-        return  rc;
-    }
-
-    for(unsigned i = 0 ; i < columnDescriptor.size() ; ++i) {
-        bytesToWrite.clear();
-        createColumnTableRow(lastTableID, columnDescriptor[i], i+1, bytesToWrite);
-        rc = insertCatalogTableTuple("Columns", columnDescriptor, bytesToWrite.data(), rid);
-        if(rc != 0) {
-            return  rc;
-        }
-    }
-    return 0;
+    return createTableHelper("Tables", columnDescriptor);
 }
 
 RC RelationManager::deleteCatalog() {
@@ -267,19 +248,19 @@ RC RelationManager::deleteCatalog() {
     return 0;
 }
 
-/* NOTE ***************************
- * In contrast to createCatalog(), this method calls insertTuple instead of insertCatalogTableTuple
- * in order to insert records to tables
- * ********************************/
 RC RelationManager::createTable(const std::string &tableName, const std::vector<Attribute> &attrs) {
     if(PagedFileManager::instance().createFile(tableName) != 0) {
         return -1;
     }
 
+    return createTableHelper(tableName, attrs);
+}
+
+RC RelationManager::createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs) {
     std::vector<byte> bytesToWrite;
     createTableTableRow(++lastTableID, tableName, bytesToWrite);
     RID rid;
-    RC rc = insertTuple("Tables", bytesToWrite.data(), rid);
+    RC rc = insertCatalogTableTuple("Tables", tablesDescriptor, bytesToWrite.data(), rid);
     if(rc != 0) {
         return  rc;
     }
@@ -287,7 +268,7 @@ RC RelationManager::createTable(const std::string &tableName, const std::vector<
     for(unsigned i = 0 ; i < attrs.size() ; ++i) {
         bytesToWrite.clear();
         createColumnTableRow(lastTableID, attrs[i], i+1, bytesToWrite);
-        rc = insertTuple("Columns", bytesToWrite.data(), rid);
+        rc = insertCatalogTableTuple("Columns", columnDescriptor, bytesToWrite.data(), rid);
         if(rc != 0) {
             return  rc;
         }
@@ -336,6 +317,7 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     }
     //Iterator needs to be closed
     tableIt.close();
+    columnIt.close();
 
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
         return rc;
@@ -395,8 +377,8 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
         attrs.push_back(tmp);
         cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
     }
-    it.close();
-    rc = closeFile(fh);
+
+    rc = it.close();
     if(rc != 0)
         return -4;
 

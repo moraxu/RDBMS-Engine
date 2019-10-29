@@ -62,6 +62,8 @@ public:
 
     RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
 
+    RC createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs);
+
     RC deleteTable(const std::string &tableName);
 
     RC getAttributes(const std::string &tableName, std::vector<Attribute> &attrs);
