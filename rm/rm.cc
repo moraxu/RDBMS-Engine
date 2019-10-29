@@ -17,7 +17,6 @@ RelationManager::RelationManager(){
 }
 
 RelationManager::~RelationManager() {
-    deleteCatalog();
 }
 
 RelationManager::RelationManager(const RelationManager &) = default;
@@ -225,6 +224,7 @@ void RelationManager::createColumnTableRow(const unsigned& tableID, const Attrib
 }
 
 RC RelationManager::createCatalog() {
+    cout<<"In createCatalog():"<<endl;
     if(PagedFileManager::instance().createFile("Tables") != 0) {
         return -1;
     }
@@ -232,6 +232,7 @@ RC RelationManager::createCatalog() {
         return -1;
     }
 
+    cout<<"Tables and Columns created."<<endl;
     return createTableHelper("Tables", columnDescriptor);
 }
 
