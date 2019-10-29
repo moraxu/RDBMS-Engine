@@ -8,6 +8,7 @@ RC TEST_RM_0(const std::string &tableName) {
     // GetAttributes
     std::vector<Attribute> attrs;
     RC rc = rm.getAttributes(tableName, attrs);
+    cout<<"getAttributes1 no segmentation fault!"<<endl;
     assert(rc == success && "RelationManager::getAttributes() should not fail.");
 
     for (unsigned i = 0; i < (unsigned) attrs.size(); i++) {

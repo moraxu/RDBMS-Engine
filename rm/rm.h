@@ -48,7 +48,7 @@ public:
 
     RC getIdFromTableName(const std::string &tableName);
 
-    string getFileName(const std::string &tableName);
+    std::string getFileName(const std::string &tableName);
 
     RC insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid);
 
@@ -101,12 +101,10 @@ protected:
     RelationManager &operator=(const RelationManager &);                // Prevent assignment
 
 private:
-    static RelationManager *_relation_manager;
     std::vector<Attribute> tablesDescriptor; //Descriptor of 'Tables' which is  initialized when object created
     std::vector<Attribute> columnDescriptor; //Descriptor of 'Columns' which is  initialized when object created
-    RecordBasedFileManager rbfm;
-    static unsigned lastTableID;
-    static unsigned numberOfColumnsTblFields;
+    unsigned lastTableID;
+    unsigned numberOfColumnsTblFields;
 };
 
 #endif

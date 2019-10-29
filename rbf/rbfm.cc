@@ -268,7 +268,7 @@ Important Note: The first field(offset field) in slot is set to -1 if deleted;
 The second field(length field) is set to -1 if the slot is tombstone. If so, the record content is filled with the actual RID.
 **/
 RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-    onst RID &rid) {
+    const RID &rid) {
     unsigned p = rid.pageNum,s = rid.slotNum;
     byte pageStart[PAGE_SIZE];
     RC rcode = fileHandle.readPage(p,pageStart);
@@ -552,6 +552,10 @@ void RBFM_ScanIterator::fillAttrIndices() {
     }
 }
 
+/**
+This function go through all the records in the file pointed by 'fileHandle', find the records that satisfy filter condition,
+then extract fields referred by 'conditionAttribute' from these records.
+**/
 RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     byte record[PAGE_SIZE]; //we have to read the attribute for comparison into an array of a page size
                             //because in case of a string attribute, it would be hard to predict its size

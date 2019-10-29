@@ -1,18 +1,16 @@
 #include "rm.h"
 #include <cmath>
+#include <iostream>
 
 using namespace std;
 
-RelationManager *RelationManager::_relation_manager = nullptr;
-
 //Change return type to RelationManager *
 RelationManager &RelationManager::instance() {
-    static _relation_manager = RelationManager();
+    static RelationManager _relation_manager = RelationManager();
     return _relation_manager;
 }
 
 RelationManager::RelationManager(){
-    rbfm = RecordBasedFileManager::instance();
     createTableDescriptor();
     createColumnDescriptor();
     createCatalog();
@@ -21,7 +19,6 @@ RelationManager::RelationManager(){
 }
 
 RelationManager::~RelationManager() {
-    delete _relation_manager;
     deleteCatalog();
 }
 
@@ -34,8 +31,8 @@ Tables (table-id:int, table-name:varchar(50), file-name:varchar(50))
 ******************************************************************************************************/
 RC RelationManager::createTableDescriptor(){
     vector<string> fieldName = {"table-id","table-name","file-name"};
-    vector<int> type = {TypeInt,TypeVarChar,TypeVarChar};
-    vector<int> len = {sizeof(int),50,50};
+    vector<AttrType> type = {TypeInt,TypeVarChar,TypeVarChar};
+    vector<AttrLength> len = {sizeof(int),50,50};
 
     for(int i = 0;i < 3;i++){
         Attribute tmp;
@@ -53,8 +50,8 @@ Columns(table-id:int, column-name:varchar(50), column-type:int, column-length:in
 ******************************************************************************************************/
 RC RelationManager::createColumnDescriptor(){
     vector<string> fieldName = {"table-id","column-name","column-type","column-length","column-position"};
-    vector<int> type = {TypeInt,TypeVarChar,TypeInt,TypeInt,TypeInt};
-    vector<int> len = {sizeof(int),50,sizeof(int),sizeof(int),sizeof(int)};
+    vector<AttrType> type = {TypeInt,TypeVarChar,TypeInt,TypeInt,TypeInt};
+    vector<AttrLength> len = {sizeof(int),50,sizeof(int),sizeof(int),sizeof(int)};
 
     for(int i = 0;i < 5;i++){
         Attribute tmp;
@@ -67,21 +64,53 @@ RC RelationManager::createColumnDescriptor(){
     return 0;
 }
 
+std::string RelationManager::getFileName(const std::string &tableName) {
+    FileHandle fh;
+    string res;
+    int rc = RecordBasedFileManager::instance().openFile("Tables",fh);
+    if(rc != 0)
+        return string();
+
+    byte page[PAGE_SIZE];
+    RID rid;
+
+    //Filter the record based on comparison over "table-name" field, then extract "file-name" field from these filtered record
+    RM_ScanIterator tableIt;
+    std::vector<string> attr = {"file-name"};
+    scan("Tables", "table-name", CompOp::EQ_OP, tableName.c_str(), attr, tableIt);
+
+    //Assume the length of content to be extracted is less than PAGE_SIZE
+    if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
+        byte *cur = page;
+        unsigned nullFieldLen = ceil(attr.size()/8.0);
+        cur += nullFieldLen;
+        unsigned fileNameLen = *(unsigned *)cur;
+        cur += sizeof(unsigned);
+        res = string((char *)cur,fileNameLen);
+    }
+    tableIt.close();
+
+    rc = closeFile(fh);
+    if(rc != 0)
+       return string();
+    return res;
+}
+
 RC RelationManager::openFile(const std::string &tableName,FileHandle &fileHandle){
     string fn = getFileName(tableName);
     //No such file associated with tableName
     if(fn.empty())
         return -1;
 
-    return rbfm.openFile(fn,fileHandle);
+    return RecordBasedFileManager::instance() .openFile(fn,fileHandle);
 }
 
 RC RelationManager::createFile(const std::string &fileName){
-    return rbfm.createFile(fileName);
+    return RecordBasedFileManager::instance().createFile(fileName);
 }
 
 RC RelationManager::closeFile(FileHandle &fileHandle){
-    return rbfm.closeFile(fileHandle);
+    return RecordBasedFileManager::instance().closeFile(fileHandle);
 }
 
 /**************************************
@@ -92,60 +121,32 @@ NO FILE ASSOCIATED WITH TABLENAME: -3
 **************************************/
 int RelationManager::getIdFromTableName(const std::string &tableName){
     FileHandle fh;
-    int rc = rbfm.openFile("Tables",fh);
+    int res = -3,cnt = 1;
+    int rc = RecordBasedFileManager::instance().openFile("Tables",fh);
     if(rc != 0)
         return -1;
+    cout<<cnt++<<endl;
 
-    byte page[PAGE_SIZE];
+    byte page[sizeof(unsigned)+1];
     RID rid;
-    string res;
-    RBFM_ScanIterator it = RBFM_ScanIterator();
-    std::vector<string> attr = {"table-id","table-name","file-name"};
-    rbfm.scan(fh,tablesDescriptor,"table-name",EQ_OP,tableName.c_str(),attr,it);
+    RM_ScanIterator tableIt;
+    std::vector<string> attr = {"table-id"};
+    scan("Tables","table-name",EQ_OP,tableName.c_str(),attr,tableIt);
+    cout<<cnt++<<endl;
 
-    if(it.getNextRecord(rid,page) != RBFM_EOF){
+    if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
+        cout<<cnt++<<" "<<res<<endl;
+        byte *cur = page;
         unsigned nullFieldLen = ceil(attr.size()/8.0);
-        page += nullFieldLen;
-        return *(unsigned *)page;
+        cur += nullFieldLen;
+        res = *(unsigned *)cur;
+        cout<<cnt++<<" "<<res<<endl;
     }
-    it.close();
+    tableIt.close();
     rc = closeFile(fh);
     if(rc != 0)
         return -2;
 
-    return -3;
-}
-
-string RelationManager::getFileName(const std::string &tableName) {
-    FileHandle fh;
-    int rc = rbfm.openFile("Tables",fh);
-    if(rc != 0)
-        return string();
-
-    byte page[PAGE_SIZE];
-    RID rid;
-
-
-    RM_ScanIterator tableIt;
-    //The second-to-last parameter of scan should be  the attribute descriptor of  'Tables'.
-    //std::vector<std::string> attributeNames(1, "table-id");
-    std::vector<string> attr = {"table-id","table-name","file-name"};
-    scan("Tables", "table-id", CompOp::EQ_OP, &tableID, attr, tableIt);
-
-    unsigned bytes[2];  //not sure if needed though
-
-    if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
-        unsigned nullFieldLen = ceil(attr.size()/8.0);
-        page += nullFieldLen+sizeof(unsigned);
-        unsigned tableNameLen = *(unsigned *)page;
-        page += sizeof(unsigned);
-        res = string((char *)page,tableNameLen);
-    }
-    tableIt.close();
-
-    rc = closeFile(fh);
-    //if(rc != 0)
-    //   return string();
     return res;
 }
 
@@ -163,13 +164,13 @@ RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const 
     if(rc != 0)
         return -1;
 
-    rc = rbfm.insertRecord(fh,attrs,data,rid);
+    rc = RecordBasedFileManager::instance().insertRecord(fh,attrs,data,rid);
     if(rc < 0)
         return -3;
 
     return 0;
 }
-
+ 
 /* NOTE *************************************************************************************************************
 createTableTableRow and createColumnTableRow methods transform rows to be inserted into Table/Column catalog tables
  into raw std::vector<byte>& bytesToWrite data. I could have supply a helper function that would append at the end of
@@ -334,7 +335,7 @@ RC RelationManager::deleteTable(const std::string &tableName) {
         deleteTuple("Columns", rid);
     }
     //Iterator needs to be closed
-    it.close();
+    tableIt.close();
 
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
         return rc;
@@ -349,44 +350,49 @@ FILE OPEN ERROR: -1
 NO FILE ASSOCIATED WITH TABLENAME: -2
 SCAN ERROR: -3
 FILE CLOSE ERROR: -4
+
+NOTE: 'attrs' could be empty after this method returns 0!
 **************************************/
 RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
+    int cnt = 1;
     int id = getIdFromTableName(tableName);
     if(id < 0) return id;
+    cout<<cnt++<<endl;
 
     FileHandle fh;
-    rbfm.openFile("Columns",fh);
+    int rc = RecordBasedFileManager::instance().openFile("Columns",fh);
     if(rc != 0)
         return -1;
+    cout<<cnt++<<endl;
 
     byte page[PAGE_SIZE];
-    FileHandle fh;
     RID rid;
-    string res;
-    RBFM_ScanIterator it = RBFM_ScanIterator();
-    std::vector<string> attr = {"table-id","column-name","column-type","column-length","column-position"};
-    rc = rbfm.scan(fh,tablesDescriptor,"table-id",EQ_OP,&id,attr,it);
-    if(rc != 0)
-        return -3;
+    RM_ScanIterator tableIt;
+    std::vector<string> attr = {"column-name","column-type","column-length","column-position"};
+    scan("Columns", "table-id", CompOp::EQ_OP, &id, attr, tableIt);
 
-    while(it.getNextRecord(rid,page) != RBFM_EOF){
+    //Assume the length of content to be extracted is less than PAGE_SIZE
+    //
+    while(tableIt.getNextTuple(rid,page) != RBFM_EOF){
         byte *cur = page;
         Attribute tmp;
         unsigned nullFieldLen = ceil(attr.size()/8.0);
-        cur += nullFieldLen+sizeof(unsigned);
+        cur += nullFieldLen;
 
-        unsigned tableNameLen = *(unsigned *)cur;
+        unsigned columnNameLen = *(unsigned *)cur;
         cur += sizeof(unsigned);
-        string fieldName = string((char *)cur,tableNameLen);
-        tmp.name = fieldName;
+        string columnName = string((char *)cur,columnNameLen);
+        tmp.name = columnName;
+        cur += columnNameLen;
 
-        tmp.type = *(unsigned *)cur;
+        tmp.type = *(AttrType *)cur;
         cur += sizeof(unsigned);
 
-        tmp.length = *(unsigned *)cur;
+        tmp.length = *(AttrLength *)cur;
         attrs.push_back(tmp);
+        cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
     }
-    it.close();
+    tableIt.close();
     rc = closeFile(fh);
     if(rc != 0)
         return -4;
@@ -412,7 +418,7 @@ RC RelationManager::insertTuple(const std::string &tableName, const void *data, 
     if(rc < 0)
         return -2;
 
-    rc = rbfm.insertRecord(fh,attrs,data,rid);
+    rc = RecordBasedFileManager::instance().insertRecord(fh,attrs,data,rid);
     if(rc < 0)
         return -3;
 
@@ -441,7 +447,7 @@ RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
     if(rc < 0)
         return -2;
 
-    rc = rbfm.deleteRecord(fh,attrs,rid);
+    rc = RecordBasedFileManager::instance().deleteRecord(fh,attrs,rid);
     if(rc < 0)
         return -3;
 
@@ -470,7 +476,7 @@ RC RelationManager::updateTuple(const std::string &tableName, const void *data, 
     if(rc < 0)
         return -2;
 
-    rc = rbfm.updateRecord(fh,attrs,data,rid);
+    rc = RecordBasedFileManager::instance().updateRecord(fh,attrs,data,rid);
     if(rc < 0)
         return -3;
 
@@ -499,7 +505,7 @@ RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void
     if(rc < 0)
         return -2;
 
-    rc = rbfm.readRecord(fh,attrs,rid,data);
+    rc = RecordBasedFileManager::instance().readRecord(fh,attrs,rid,data);
     if(rc < 0)
         return -3;
 
@@ -549,7 +555,7 @@ RC RelationManager::scan(const std::string &tableName,
         return -1;
     }
 
-    return rbfm.scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
+    return RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
 }
 
 // Extra credit work
