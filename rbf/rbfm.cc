@@ -566,7 +566,7 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     //read next record in the file (if there is any)
 
     for( ; true ; ++currRID.slotNum) { //iterate over table till we find next record satisfying the condition
-        cout << "Beginning of getNextRecord's for loop, currRID.slotNum=" << currRID.slotNum << "\n";
+        cout << "Beginning of getNextRecord's for loop, currRID.slotNum=" << currRID.slotNum <<", currRID.pageNum=" << currRID.pageNum << "\n";
         if(RecordBasedFileManager::instance().moveToNextAvailableRecord(fileHandle, currRID) == RBFM_EOF) {
             cout << "\tReturn EOF\n";
             return RBFM_EOF;

@@ -165,7 +165,7 @@ RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const 
     if(rc < 0)
         return -3;
 
-    return 0;
+    return closeFile(fh);
 }
  
 /* NOTE *************************************************************************************************************
