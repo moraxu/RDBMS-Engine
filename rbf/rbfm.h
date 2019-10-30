@@ -60,17 +60,14 @@ class RBFM_ScanIterator {
     std::string conditionAttribute;
     CompOp compOp;
     const void *value;
-    std::set<std::string> attributeNames;
     RID currRID = { 0, 0 };
-    unsigned attrForCompInd; //Index of atrribute to be compared
-    std::vector<unsigned> attrToExtractInd; //Index of atrribute to be extracted
+    unsigned attrForCompInd; //Index of attribute to be compared
+    std::vector<unsigned> attrToExtractInd; //Indices of attributes to be extracted
 
 public:
     RBFM_ScanIterator() = default;;
 
     ~RBFM_ScanIterator() = default;;
-
-    void fillAttrIndices();
 
     template <typename T>
     bool performCompOp(const T& value, const T& actualValue);
@@ -115,12 +112,20 @@ public:
         RBFM_ScanIterator::value = value;
     }
 
-    std::set<std::string> &getAttributeNames()  {
-        return attributeNames;
+    unsigned int getAttrForCompInd() const {
+        return attrForCompInd;
     }
 
-    void setAttributeNames(const std::vector<std::string> &attributeNames) {
-        RBFM_ScanIterator::attributeNames.insert(attributeNames.begin(), attributeNames.end());
+    std::vector<unsigned int> &getAttrToExtractInd() {
+        return attrToExtractInd;
+    }
+
+    void setAttrForCompInd(unsigned int attrForCompInd) {
+        RBFM_ScanIterator::attrForCompInd = attrForCompInd;
+    }
+
+    void setAttrToExtractInd(const std::vector<unsigned int> &attrToExtractInd) {
+        RBFM_ScanIterator::attrToExtractInd = attrToExtractInd;
     }
 
     // Never keep the results in the memory. When getNextRecord() is called,

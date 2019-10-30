@@ -303,7 +303,6 @@ RC RelationManager::deleteTable(const std::string &tableName) {
         return -1;
     }
     cout << "-----------------LEaving getAttributes\n";
-    //TODO have to print those attributes here to see if they were loaded correctly
     if(PagedFileManager::instance().destroyFile(tableName) != 0) {
         return -1;
     }
@@ -397,7 +396,7 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
 
         tmp.length = *(AttrLength *)cur;
         attrs.push_back(tmp);
-        //cout<<cnt++<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
+        cout<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
     }
 
     rc = it.close();

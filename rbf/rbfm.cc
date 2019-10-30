@@ -1,6 +1,7 @@
 #include <iostream>
 #include <cstring>
 #include <cmath>
+#include <map>
 #include "rbfm.h"
 
 using namespace std;
@@ -476,10 +477,9 @@ RC RecordBasedFileManager::filterAttributes(FileHandle &fileHandle, const std::v
     const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attributesToExtract.size()/8.0));
     std::vector<byte> readData(nullInfoFieldLength, 0);
 
-    for(unsigned i = 0, *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) ; i < attributesToExtract.size() ; ++i, fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation)) {
+    for(unsigned i = 0 ; i < attributesToExtract.size() ; ++i) {
         unsigned attrInd = attributesToExtract[i];
-        if(i == 0) fieldOffsets += attributesToExtract[i];
-        else fieldOffsets += (attributesToExtract[i]-attributesToExtract[i-1]);
+        unsigned *fieldOffsets = reinterpret_cast<unsigned*>(page+fieldOffsetsLocation) + attrInd;
 
         if(*fieldOffsets == *(fieldOffsets+1)) {
             unsigned byteInNullInfoField = i/8;
@@ -533,23 +533,20 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
     rbfm_ScanIterator.setConditionAttribute(conditionAttribute);
     rbfm_ScanIterator.setCompOp(compOp);
     rbfm_ScanIterator.setValue(value);
-    rbfm_ScanIterator.setAttributeNames(attributeNames);
-    rbfm_ScanIterator.fillAttrIndices();
-    return 0;
-}
 
-//We do some preprocessing of the projected attributes and the attribute used for comparison
-//- we save their default IDs in recordDescriptor vector in order to use
-//them later: in RBFM_ScanIterator::getNextRecord and RecordBasedFileManager::filterAttributes
-void RBFM_ScanIterator::fillAttrIndices() {
+    //some preprocessing
+    std::map<string,int> namesToPos;
     for(int i = 0 ; i < recordDescriptor.size() ; ++i) {
-        if(attributeNames.find(recordDescriptor[i].name) != attributeNames.end()) {
-            attrToExtractInd.push_back(i);
-        }
-        if(recordDescriptor[i].name == conditionAttribute) {
-            attrForCompInd = i;
+        namesToPos[recordDescriptor[i].name] = i;
+        if (recordDescriptor[i].name == conditionAttribute) {
+            rbfm_ScanIterator.setAttrForCompInd(i);
         }
     }
+    for(int i = 0 ; i < attributeNames.size() ; ++i) {
+        rbfm_ScanIterator.getAttrToExtractInd().push_back(namesToPos[attributeNames[i]]);
+    }
+
+    return 0;
 }
 
 /**
@@ -566,56 +563,55 @@ RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
     //read next record in the file (if there is any)
 
     for( ; true ; ++currRID.slotNum) { //iterate over table till we find next record satisfying the condition
-        cout << "Beginning of getNextRecord's for loop, currRID.slotNum=" << currRID.slotNum <<", currRID.pageNum=" << currRID.pageNum << "\n";
+        //cout << "Beginning of getNextRecord's for loop, currRID.slotNum=" << currRID.slotNum <<", currRID.pageNum=" << currRID.pageNum << "\n";
         if(RecordBasedFileManager::instance().moveToNextAvailableRecord(fileHandle, currRID) == RBFM_EOF) {
-            cout << "\tReturn EOF\n";
+            //cout << "\tReturn EOF\n";
             return RBFM_EOF;
         }
+        if(compOp == CompOp::NO_OP) { //TA said: "NO_OP simply returns all types including NULL"
+            break;
+        }
+
         RC rc = RecordBasedFileManager::instance().readAttribute(fileHandle, recordDescriptor, currRID, conditionAttribute, record);
         if(rc != 0) {
             return rc;
         }
-        cout << "\treadAttribute succedded\n";
         if(record[0] != 0) { //some bit is set in the null info field
-            continue;
+            continue;   //we couldn't use NULL field in comparisons
         }
 
         if(recordDescriptor[attrForCompInd].type == AttrType::TypeInt) {
-            cout << "\tThe issue is in TypeInt\n";
+            //cout << "\tThe issue is in TypeInt\n";
             if(performCompOp(*reinterpret_cast<const int*>(value), *reinterpret_cast<int*>(record+1))) {
-                cout << "\tpassed int test\n";
+                //cout << "\tpassed int test\n";
                 break;
             }
         }
         else if(recordDescriptor[attrForCompInd].type == AttrType::TypeReal) {
-            cout << "\tThe issue is in TypeReal\n";
+            //cout << "\tThe issue is in TypeReal\n";
             if(performCompOp(*reinterpret_cast<const float*>(value), *reinterpret_cast<float*>(record+1))) {
-                cout << "\tpassed float test\n";
+                //cout << "\tpassed float test\n";
                 break;
             }
         }
         else { //recordDescriptor[attrForCompInd].type == AttrType::TypeVarChar
-            cout << "\tThe issue is in TypeVarChar\n";
+            //cout << "\tThe issue is in TypeVarChar\n";
             unsigned* recordLen = reinterpret_cast<unsigned *>(record+1);
-            cout << "\t\t1\n";
             char* recordCont = reinterpret_cast<char*>(record+1+sizeof(unsigned));
-            cout << "\t\t2\n";
             const unsigned* valueLen = reinterpret_cast<const unsigned*>(value);
-            cout << "\t\t3\n";
             const char* valueCont = reinterpret_cast<const char*>(reinterpret_cast<const byte*>(value)+sizeof(unsigned));
-            cout << "\t\t4 " + string(recordCont, *recordLen) + "\n";
             if(performCompOp(string(valueCont, *valueLen), string(recordCont, *recordLen))) {
-                cout << "\tpassed string test\n";
+                //cout << "\tpassed string test\n";
                 break;
             }
         }
     }
-    cout << "\tBefore filtering away attributes\n";
+    //cout << "\tBefore filtering away attributes\n";
     RC rc = RecordBasedFileManager::instance().filterAttributes(fileHandle, recordDescriptor, currRID, data, attrToExtractInd);
     if(rc != 0) {
         return rc;
     }
-    cout << "End of getNextRecord, currRID.slotNum=" << currRID.slotNum << ", currRID.pageNum=" << currRID.pageNum <<"\n";
+    //cout << "End of getNextRecord, currRID.slotNum=" << currRID.slotNum << ", currRID.pageNum=" << currRID.pageNum <<"\n";
     rid.slotNum = currRID.slotNum;
     rid.pageNum = currRID.pageNum;
     ++currRID.slotNum;
@@ -635,7 +631,7 @@ typedef enum {
  */
 template <typename T>
 bool RBFM_ScanIterator::performCompOp(const T& value, const T& actualValue) {
-    cout << "\t\t\tArrived in performCompOp function\n";
+    //cout << "\t\t\tArrived in performCompOp function\n";
     if(compOp == CompOp::EQ_OP) {
         return actualValue == value;
     }
@@ -656,3 +652,4 @@ bool RBFM_ScanIterator::performCompOp(const T& value, const T& actualValue) {
     }
     return true; //(compOp == CompOp::NO_OP)
 }
+
