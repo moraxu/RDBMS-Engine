@@ -3,6 +3,7 @@
 
 #include <string>
 #include <vector>
+#include <set>
 #include <climits>
 
 #include "pfm.h"
@@ -54,17 +55,85 @@ typedef enum {
 //  rbfmScanIterator.close();
 
 class RBFM_ScanIterator {
+    FileHandle fileHandle;
+    std::vector<Attribute> recordDescriptor;
+    std::string conditionAttribute;
+    CompOp compOp;
+    const void *value;
+    RID currRID = { 0, 0 };
+    unsigned attrForCompInd; //Index of attribute to be compared
+    std::vector<unsigned> attrToExtractInd; //Indices of attributes to be extracted
+
 public:
     RBFM_ScanIterator() = default;;
 
     ~RBFM_ScanIterator() = default;;
 
+    template <typename T>
+    bool performCompOp(const T& value, const T& actualValue);
+
+    FileHandle& getFileHandle() {
+        return fileHandle;
+    }
+
+    void setFileHandle(FileHandle &fileHandle) {
+        RBFM_ScanIterator::fileHandle = fileHandle;
+    }
+
+    std::vector<Attribute> &getRecordDescriptor() {
+        return recordDescriptor;
+    }
+
+    void setRecordDescriptor(const std::vector<Attribute> &recordDescriptor) {
+        RBFM_ScanIterator::recordDescriptor = recordDescriptor;
+    }
+
+    std::string &getConditionAttribute()  {
+        return conditionAttribute;
+    }
+
+    void setConditionAttribute(const std::string &conditionAttribute) {
+        RBFM_ScanIterator::conditionAttribute = conditionAttribute;
+    }
+
+    CompOp getCompOp() const {
+        return compOp;
+    }
+
+    void setCompOp(CompOp compOp) {
+        RBFM_ScanIterator::compOp = compOp;
+    }
+
+    const void* getValue() const {
+        return value;
+    }
+
+    void setValue(const void *value) {
+        RBFM_ScanIterator::value = value;
+    }
+
+    unsigned int getAttrForCompInd() const {
+        return attrForCompInd;
+    }
+
+    std::vector<unsigned int> &getAttrToExtractInd() {
+        return attrToExtractInd;
+    }
+
+    void setAttrForCompInd(unsigned int attrForCompInd) {
+        RBFM_ScanIterator::attrForCompInd = attrForCompInd;
+    }
+
+    void setAttrToExtractInd(const std::vector<unsigned int> &attrToExtractInd) {
+        RBFM_ScanIterator::attrToExtractInd = attrToExtractInd;
+    }
+
     // Never keep the results in the memory. When getNextRecord() is called,
     // a satisfying record needs to be fetched from the file.
     // "data" follows the same format as RecordBasedFileManager::insertRecord().
-    RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
+    RC getNextRecord(RID &rid, void *data);
 
-    RC close() { return -1; };
+    RC close() { return PagedFileManager::instance().closeFile(fileHandle); };
 };
 
 class RecordBasedFileManager {
@@ -99,9 +168,11 @@ public:
 
     void transformDataToRecordFormat(const std::vector<Attribute> &recordDescriptor, const void *data, std::vector<byte> &recordFormat);
 
-    RC readFirstFreePage(FileHandle &fileHandle, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber);
+    RC readFirstFreePage(FileHandle &fileHandle, unsigned startPage, unsigned &pageNumber, const unsigned recordLength, byte *page, unsigned &targetSlotNumber);
 
-    RC insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned fieldsNo, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page);
+    RC insertRecordOnPage(FileHandle &fileHandle, const std::vector<byte> &recordFormat, const unsigned pageNumber, const unsigned targetSlotNumber, byte *page);
+
+    void shiftRecord(byte *page,const unsigned dataSize,const unsigned slotNumber);
 
     // Read a record identified by the given rid.
     RC readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data);
@@ -113,6 +184,10 @@ public:
     // (e.g., age: 24  height: 6.1  salary: 9000
     //        age: NULL  height: 7.5  salary: 7500)
     RC printRecord(const std::vector<Attribute> &recordDescriptor, const void *data);
+
+    RC moveToNextAvailableRecord(FileHandle& fileHandle, RID& rid);
+
+    RC filterAttributes(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data, const std::vector<unsigned> &attributesToExtract);
 
     /*****************************************************************************************************
     * IMPORTANT, PLEASE READ: All methods below this comment (other than the constructor and destructor) *

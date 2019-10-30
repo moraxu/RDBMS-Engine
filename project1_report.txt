@@ -8,7 +8,7 @@ gcc version : 5.5.0
 2. Internal Record Format
 - Show your record format design and describe how your design satisfies O(1) field access. If not, just mention that you haven't implemented this feature.
 - Describe how you store a VarChar field.
-1) Our record format design follows the one mentioned in the textbook - it is an array of field offsets. Every field offset points to the corresponding record field (in terms of byte offset from the beginning of the page). That way, to refer to n-th field, we can skip to n-th field offset in O(1) and then look up the corresponding field also in O(1). If the record contains null(s), the adjacent field offsets point to the same location on the page. We also included field offset to the end of the record, as per instructions in the textbook.
+1) Our record format design follows the one mentioned in the textbook - it is an array of field offsets. Every field offset points to the corresponding record field (in terms of byte offset from the beginning of the record). That way, to refer to n-th field, we can skip to n-th field offset in O(1) and then look up the corresponding field also in O(1). If the record contains null(s), the adjacent field offsets point to the same location on the page. We also included field offset to the end of the record, as per instructions in the textbook.
 
 2) We first store its size as "unsigned" and then follows the actual content.
 
