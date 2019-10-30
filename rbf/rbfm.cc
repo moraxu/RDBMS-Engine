@@ -183,7 +183,7 @@ RC RecordBasedFileManager::insertRecordOnPage(FileHandle &fileHandle, const std:
     return fileHandle.writePage(pageNumber, page);
 }
 
-RC RecordBasedFileManager::shiftRecord(byte *page,const unsigned dataSize, const unsigned slotNumber){
+void RecordBasedFileManager::shiftRecord(byte *page,const unsigned dataSize, const unsigned slotNumber){
     unsigned *freeSpace = (unsigned *)(page+PAGE_SIZE-sizeof(unsigned));
     unsigned *slotSize = (unsigned *)(page+PAGE_SIZE-2*sizeof(unsigned));
     unsigned *recordOffset = (unsigned *)(page+PAGE_SIZE-2*(slotNumber+2)*sizeof(unsigned));
@@ -206,8 +206,6 @@ RC RecordBasedFileManager::shiftRecord(byte *page,const unsigned dataSize, const
         *recordOffset = -1;
     *freeSpace -= diff;
     *recordLen = dataSize;
-
-    return 0;
 }
 
 RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor, const RID &rid, void *data) {
@@ -405,9 +403,8 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
         memcpy(pageStart+*recordOffset,formattedData.data(),dataSize);
         //Shift towards the begining of page
         if(*recordLen > dataSize) {
-            return shiftRecord(pageStart,dataSize,s);
+            shiftRecord(pageStart,dataSize,s);
         }
-        return 0;
     }
     else {
         //Check if there is enough free space in this page for the augmentation
@@ -443,9 +440,8 @@ RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vecto
             //set length field to -1 as a indicator that this slot is a tombstone
             *recordLen = -1;
         }
-
-        return fileHandle.writePage(p,pageStart);
     }
+    return fileHandle.writePage(p,pageStart);
 }
 
 /**

@@ -12,8 +12,13 @@ RelationManager &RelationManager::instance() {
 RelationManager::RelationManager(){
     createTableDescriptor();
     createColumnDescriptor();
+    numberOfColumnsTblFields = 6;
     lastTableID = 0;
-    numberOfColumnsTblFields = 5;
+    FileHandle fH;
+    if(openFile("Tables", fH) == 0) {
+        lastTableID = fH.getLastTableId();
+        closeFile(fH);
+    }
 }
 
 RelationManager::~RelationManager() {
@@ -28,11 +33,11 @@ RelationManager &RelationManager::operator=(const RelationManager &) = default;
 Tables (table-id:int, table-name:varchar(50), file-name:varchar(50))
 ******************************************************************************************************/
 RC RelationManager::createTableDescriptor(){
-    vector<string> fieldName = {"table-id","table-name","file-name"};
-    vector<AttrType> type = {TypeInt,TypeVarChar,TypeVarChar};
-    vector<AttrLength> len = {sizeof(int),50,50};
+    vector<string> fieldName = {"table-id","table-name","file-name","is-system-table"};
+    vector<AttrType> type = {TypeInt,TypeVarChar,TypeVarChar,TypeInt};
+    vector<AttrLength> len = {sizeof(int),50,50,sizeof(int)};
 
-    for(int i = 0;i < 3;i++){
+    for(int i = 0;i < fieldName.size();i++){
         Attribute tmp;
         tmp.name = fieldName[i];
         tmp.type = type[i];
@@ -51,7 +56,7 @@ RC RelationManager::createColumnDescriptor(){
     vector<AttrType> type = {TypeInt,TypeVarChar,TypeInt,TypeInt,TypeInt};
     vector<AttrLength> len = {sizeof(int),50,sizeof(int),sizeof(int),sizeof(int)};
 
-    for(int i = 0;i < 5;i++){
+    for(int i = 0;i < fieldName.size();i++){
         Attribute tmp;
         tmp.name = fieldName[i];
         tmp.type = type[i];
@@ -120,11 +125,11 @@ FILE CLOSE ERROR: -2
 NO FILE ASSOCIATED WITH TABLENAME: -3
 **************************************/
 int RelationManager::getIdFromTableName(const std::string &tableName){
-    cout<<"In getIdFromTableName:"<<endl;
+
     FileHandle fh;
     int res = -3,cnt = 1;
     int rc = RecordBasedFileManager::instance().openFile("Tables",fh);
-    cout<<rc<<endl;
+
     if(rc != 0)
         return -1;
 
@@ -156,16 +161,13 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
 }
 
 /**************************************
-When inserting tuples to newly created catalog tables, we cannot call the default insertTuple method
- because the catalog tables don't yet contain any table nor column info. In another words, this function
- is to be called from createCatalog() method only.
 WHEN return value < 0:
 FILE OPEN ERROR: -1
 FAIL TO INSERT: -3
 **************************************/
 RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid) {
     FileHandle fh;
-    int rc = RecordBasedFileManager::instance().openFile(tableName,fh);
+    int rc = openFile(tableName,fh);
     if(rc != 0)
         return -1;
 
@@ -182,7 +184,7 @@ createTableTableRow and createColumnTableRow methods transform rows to be insert
  such vector either unsigned or string field, in order to minimalize the use of pointers, but didn't have time
  for this change right now, it's not that important
  ********************************************************************************************************************/
-void RelationManager::createTableTableRow(const unsigned& tableID, const std::string& tableName, std::vector<byte>& bytesToWrite) {
+void RelationManager::createTableTableRow(const unsigned& tableID, const std::string& tableName, std::vector<byte>& bytesToWrite, bool systemTable) {
     //Null field at the beginning
     const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(tablesDescriptor.size()/8.0));
     vector<byte> emptyBytes(nullInfoFieldLength);
@@ -201,6 +203,11 @@ void RelationManager::createTableTableRow(const unsigned& tableID, const std::st
         bytesToWrite.insert(bytesToWrite.end(), tableNameLengthPtr, tableNameLengthPtr + sizeof(tableNameLength));
         bytesToWrite.insert(bytesToWrite.end(), tableNamePtr, tableNamePtr + tableNameLength);
     }
+
+    //Is system table
+    unsigned isSystemTable = systemTable ? 1 : 0;
+    const byte* isSystemTablePtr = reinterpret_cast<const byte*>(&isSystemTable);
+    bytesToWrite.insert(bytesToWrite.end(), isSystemTablePtr, isSystemTablePtr + sizeof(isSystemTable));
 }
 
 void RelationManager::createColumnTableRow(const unsigned& tableID, const Attribute& attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite) {
@@ -243,13 +250,23 @@ RC RelationManager::createCatalog() {
         return -1;
     }
 
-    RC rc = createTableHelper("Tables", tablesDescriptor);
+    RC rc = createTableHelper("Tables", tablesDescriptor, true);
     if(rc != 0) {
         return  rc;
     }
 
-    rc = createTableHelper("Columns", columnDescriptor);
-    return rc;
+    rc = createTableHelper("Columns", columnDescriptor,true);
+    if(rc != 0) {
+        return  rc;
+    }
+
+    FileHandle fH;
+    rc = openFile("Tables", fH);
+    if(rc != 0) {
+        return  rc;
+    }
+    fH.setLastTableId(lastTableID);
+    return closeFile(fH);
 }
 
 RC RelationManager::deleteCatalog() {
@@ -267,12 +284,23 @@ RC RelationManager::createTable(const std::string &tableName, const std::vector<
         return -1;
     }
 
-    return createTableHelper(tableName, attrs);
+    RC rc = createTableHelper(tableName, attrs, false);
+    if(rc != 0) {
+        return  rc;
+    }
+
+    FileHandle fH;
+    rc = openFile("Tables", fH);
+    if(rc != 0) {
+        return  rc;
+    }
+    fH.setLastTableId(lastTableID);
+    return closeFile(fH);
 }
 
-RC RelationManager::createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs) {
+RC RelationManager::createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs, bool isSystemTable) {
     std::vector<byte> bytesToWrite;
-    createTableTableRow(++lastTableID, tableName, bytesToWrite);
+    createTableTableRow(++lastTableID, tableName, bytesToWrite, isSystemTable);
     RID rid;
     RC rc = insertCatalogTableTuple("Tables", tablesDescriptor, bytesToWrite.data(), rid);
     if(rc != 0) {
@@ -292,7 +320,7 @@ RC RelationManager::createTableHelper(const std::string &tableName, const std::v
 
 RC RelationManager::deleteTable(const std::string &tableName) {
     int tableID = getIdFromTableName(tableName);
-    cout << "[TableID=]" << tableID << "\n";
+
     if(tableID < 1) {
         return tableID;
     }
@@ -302,7 +330,7 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     if(rc != 0) {
         return -1;
     }
-    cout << "-----------------LEaving getAttributes\n";
+
     if(PagedFileManager::instance().destroyFile(tableName) != 0) {
         return -1;
     }
@@ -315,11 +343,13 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     void* dummyPtr = nullptr;   //we only want to get RID, not any fields
     rc = tableIt.getNextTuple(rid, dummyPtr);
     if(rc != 0) {
+
         return rc;
     }
     //We first delete one row corresponding to this table in the system catalog "Table"
     rc = deleteTuple("Tables", rid);
     if(rc != 0) {
+
         return rc;
     }
 
@@ -328,13 +358,26 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     scan("Columns", "table-id", CompOp::EQ_OP, &tableID, attributeNamesEmpty, columnIt);
     int counter = 0;
     for( ; counter < attrs.size() && (rc = columnIt.getNextTuple(rid, nullptr)) != RM_EOF ; ++counter) {
-        deleteTuple("Columns", rid);
+        rc = deleteTuple("Columns", rid);
+        if(rc != 0) {
+
+            return rc;
+        }
     }
     //Iterator needs to be closed
-    tableIt.close();
-    columnIt.close();
+    rc = tableIt.close();
+    if(rc != 0) {
+
+        return rc;
+    }
+    rc = columnIt.close();
+    if(rc != 0) {
+
+        return rc;
+    }
 
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
+
         return rc;
     }
 
@@ -351,7 +394,7 @@ FILE CLOSE ERROR: -4
 NOTE: 'attrs' could be empty after this method returns 0!
 **************************************/
 RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attribute> &attrs) {
-    cout<<"In getAttributes:"<<endl;
+
     //int cnt = 1;
     if(tableName == string("Tables")) {
         attrs = tablesDescriptor;
@@ -363,20 +406,20 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
     }     
     int id = getIdFromTableName(tableName);
     if(id < 0) return id;
-    //cout<<cnt++<<endl;
+
 
     FileHandle fh;
     int rc = RecordBasedFileManager::instance().openFile("Columns",fh);
     if(rc != 0)
         return -1;
-    //cout<<cnt++<<endl;
+
 
     byte page[PAGE_SIZE];
     RID rid;
     RBFM_ScanIterator it;
     std::vector<string> attr = {"column-name","column-type","column-length","column-position"};
     RecordBasedFileManager::instance().scan(fh,columnDescriptor,"table-id", CompOp::EQ_OP, &id, attr, it);
-    //cout<<cnt++<<endl;
+
 
     //Assume the length of content to be extracted is less than PAGE_SIZE
     while(it.getNextRecord(rid,page) != RBFM_EOF){
@@ -396,7 +439,7 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
 
         tmp.length = *(AttrLength *)cur;
         attrs.push_back(tmp);
-        cout<<" "<<tmp.name<<" "<<tmp.type<<" "<<tmp.length<<endl;
+
     }
 
     rc = it.close();
@@ -505,19 +548,23 @@ RC RelationManager::readTuple(const std::string &tableName, const RID &rid, void
     int rc = openFile(tableName,fh);
     if(rc != 0)
         return -1;
+   ;
 
     std::vector<Attribute> attrs;
     rc = getAttributes(tableName,attrs);
     if(rc < 0)
         return -2;
 
+
     rc = RecordBasedFileManager::instance().readRecord(fh,attrs,rid,data);
     if(rc < 0)
         return -3;
 
+
     rc = closeFile(fh);
     if(rc != 0)
         return -4;
+
 
     return 0;
 }
@@ -550,12 +597,10 @@ RC RelationManager::scan(const std::string &tableName,
                          const std::vector<std::string> &attributeNames,
                          RM_ScanIterator &rm_ScanIterator) {
     FileHandle fh;
-    int cnt = 1;
     RC rc = openFile(tableName,fh);
     if(rc != 0) {
         return -1;
     }
-    cout<<cnt<<endl;
 
     std::vector<Attribute> attrs;
     rc = getAttributes(tableName, attrs);

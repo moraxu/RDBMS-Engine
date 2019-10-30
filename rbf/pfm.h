@@ -41,6 +41,12 @@ public:
     unsigned writePageCounter;
     unsigned appendPageCounter;
     unsigned noPages;
+    unsigned lastTableID;
+
+    unsigned int getLastTableId() const;
+
+    void setLastTableId(unsigned int lastTableId);
+    //used only in case of "Tables" system catalog
 
     FILE *fp;
 

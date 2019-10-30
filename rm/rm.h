@@ -52,7 +52,7 @@ public:
 
     RC insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid);
 
-    void createTableTableRow(const unsigned& tableID, const std::string &tableName, std::vector<byte>& bytesToWrite);
+    void createTableTableRow(const unsigned& tableID, const std::string &tableName, std::vector<byte>& bytesToWrite, bool isSystemTable);
 
     void createColumnTableRow(const unsigned& tableID, const Attribute &attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite);
 
@@ -62,7 +62,7 @@ public:
 
     RC createTable(const std::string &tableName, const std::vector<Attribute> &attrs);
 
-    RC createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs);
+    RC createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs, bool isSystemTable);
 
     RC deleteTable(const std::string &tableName);
 

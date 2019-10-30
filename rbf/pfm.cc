@@ -28,7 +28,7 @@ RC PagedFileManager::createFile(const std::string &fileName) {
     if(!fp)
         return -1;
 
-    unsigned  cnt[PAGE_SIZE];
+    byte cnt[PAGE_SIZE];
     memset(cnt,0,sizeof(cnt));
     //cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
     fseek(fp,0,SEEK_SET);
@@ -45,37 +45,42 @@ RC PagedFileManager::destroyFile(const std::string &fileName) {
 
 RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandle) {
     //File doesn't exist!
-    if(access(fileName.c_str(),F_OK))
+    if(access(fileName.c_str(),F_OK)) {
         return -1;
-    
+    }
+
     //fileHandle is already a handle for some open file!
-    if(fileHandle.fp)
-         return -1;
-    
+    if(fileHandle.fp) {
+        return -1;
+    }
+
     fileHandle.fp = fopen(fileName.c_str(),"rb+");
     //File open error!
-    if(!fileHandle.fp)
+    if(!fileHandle.fp) {
         return -1;
+    }
     
-    unsigned cnt[4];
+    unsigned cnt[5];
     fseek(fileHandle.fp,0,SEEK_SET);
-    fread(cnt,sizeof(unsigned),4,fileHandle.fp);
+    fread(cnt,sizeof(unsigned),5,fileHandle.fp);
     fileHandle.readPageCounter = cnt[0];
     fileHandle.writePageCounter =  cnt[1];
     fileHandle.appendPageCounter = cnt[2];
     fileHandle.noPages = cnt[3];
+    fileHandle.lastTableID = cnt[4];
     //cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
     return 0;
 }
 
 RC PagedFileManager::closeFile(FileHandle &fileHandle) {
     fseek(fileHandle.fp, 0, SEEK_SET);
-    unsigned cnt[4];
+    unsigned cnt[5];
     cnt[0] = fileHandle.readPageCounter;
     cnt[1] = fileHandle.writePageCounter;
     cnt[2] = fileHandle.appendPageCounter;
     cnt[3] = fileHandle.noPages;
-    fwrite(cnt,sizeof(unsigned),4,fileHandle.fp);
+    cnt[4] = fileHandle.lastTableID;
+    fwrite(cnt,sizeof(unsigned),5,fileHandle.fp);
     //File close error!
     if(fclose(fileHandle.fp) == EOF)
         return -1;
@@ -87,6 +92,7 @@ FileHandle::FileHandle() {
     writePageCounter = 0;
     appendPageCounter = 0;
     noPages = 0;
+    lastTableID = 0;
     fp = NULL;
 }
 
@@ -151,4 +157,12 @@ RC FileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePage
     writePageCount = writePageCounter;
     appendPageCount = appendPageCounter;
     return 0;
+}
+
+unsigned int FileHandle::getLastTableId() const {
+    return lastTableID;
+}
+
+void FileHandle::setLastTableId(unsigned int lastTableId) {
+    lastTableID = lastTableId;
 }
