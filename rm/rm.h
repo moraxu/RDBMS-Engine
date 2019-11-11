@@ -64,6 +64,8 @@ public:
 
     RC createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs, bool isSystemTable);
 
+    RC isSystemTable(const unsigned tableID, bool& isSysTable);
+
     RC deleteTable(const std::string &tableName);
 
     RC getAttributes(const std::string &tableName, std::vector<Attribute> &attrs);
@@ -106,7 +108,6 @@ private:
     std::vector<Attribute> tablesDescriptor; //Descriptor of 'Tables' which is  initialized when object created
     std::vector<Attribute> columnDescriptor; //Descriptor of 'Columns' which is  initialized when object created
     unsigned lastTableID;
-    unsigned numberOfColumnsTblFields;
 };
 
 #endif

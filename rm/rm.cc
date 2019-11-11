@@ -12,7 +12,6 @@ RelationManager &RelationManager::instance() {
 RelationManager::RelationManager(){
     createTableDescriptor();
     createColumnDescriptor();
-    numberOfColumnsTblFields = 6;
     lastTableID = 0;
     FileHandle fH;
     if(openFile("Tables", fH) == 0) {
@@ -30,10 +29,10 @@ RelationManager::RelationManager(const RelationManager &) = default;
 RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
 /******************************************************************************************************
-Tables (table-id:int, table-name:varchar(50), file-name:varchar(50))
+Tables (table-id:int, table-name:varchar(50), file-name:varchar(50), system-table:int
 ******************************************************************************************************/
 RC RelationManager::createTableDescriptor(){
-    vector<string> fieldName = {"table-id","table-name","file-name","is-system-table"};
+    vector<string> fieldName = {"table-id","table-name","file-name","system-table"};
     vector<AttrType> type = {TypeInt,TypeVarChar,TypeVarChar,TypeInt};
     vector<AttrLength> len = {sizeof(int),50,50,sizeof(int)};
 
@@ -212,7 +211,7 @@ void RelationManager::createTableTableRow(const unsigned& tableID, const std::st
 
 void RelationManager::createColumnTableRow(const unsigned& tableID, const Attribute& attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite) {
     //Null field at the beginning
-    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(numberOfColumnsTblFields/8.0));
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(columnDescriptor.size()/8.0));
     vector<byte> emptyBytes(nullInfoFieldLength);
     bytesToWrite.insert(bytesToWrite.end(), emptyBytes.begin(), emptyBytes.end());
 
@@ -318,17 +317,48 @@ RC RelationManager::createTableHelper(const std::string &tableName, const std::v
     return 0;
 }
 
+RC RelationManager::isSystemTable(const unsigned tableID, bool& isSysTable) {
+    FileHandle fh;
+    RC rc = RecordBasedFileManager::instance().openFile("Tables",fh);
+    if(rc != 0)
+        return -1;
+
+    byte page[PAGE_SIZE];
+    RID rid;
+    RBFM_ScanIterator it;
+    std::vector<string> attr = {"system-table"};
+    RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-id",CompOp::EQ_OP,&tableID,attr,it);
+
+    if(it.getNextRecord(rid,page) != RBFM_EOF){
+        byte *cur = page;
+        unsigned nullFieldLen = ceil(attr.size()/8.0);
+        cur += nullFieldLen;
+        isSysTable = *(unsigned *)cur == 1 ? true : false;
+    }
+    return it.close();
+}
+
 RC RelationManager::deleteTable(const std::string &tableName) {
     int tableID = getIdFromTableName(tableName);
 
     if(tableID < 1) {
-        return tableID;
+        return -1;
+    }
+
+    bool isSysTable;
+    RC rc = isSystemTable(tableID, isSysTable);
+    if(rc != 0) {
+        return rc;
+    }
+
+    if(isSysTable) {
+        return -1;
     }
 
     std::vector<Attribute> attrs;
-    RC rc = getAttributes(tableName, attrs);
+    rc = getAttributes(tableName, attrs);
     if(rc != 0) {
-        return -1;
+        return rc;
     }
 
     if(PagedFileManager::instance().destroyFile(tableName) != 0) {
@@ -343,13 +373,11 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     void* dummyPtr = nullptr;   //we only want to get RID, not any fields
     rc = tableIt.getNextTuple(rid, dummyPtr);
     if(rc != 0) {
-
         return rc;
     }
     //We first delete one row corresponding to this table in the system catalog "Table"
     rc = deleteTuple("Tables", rid);
     if(rc != 0) {
-
         return rc;
     }
 
@@ -367,18 +395,15 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     //Iterator needs to be closed
     rc = tableIt.close();
     if(rc != 0) {
-
         return rc;
     }
     rc = columnIt.close();
     if(rc != 0) {
-
         return rc;
     }
 
     if(counter < attrs.size()) { //error occurred, other than RM_EOF
-
-        return rc;
+        return -1;
     }
 
     return 0;
