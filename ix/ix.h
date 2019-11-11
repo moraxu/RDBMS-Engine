@@ -8,6 +8,34 @@
 
 # define IX_EOF (-1)  // end of the index scan
 
+struct indexEntry
+{
+    string key;
+    int ival;
+    float fval;
+    RID rid;
+    unsigned pageNum;
+    bool valid;
+
+    indexEntry(){valid = false;}
+    indexEntry(const dataEntry &d){
+        key = d.key;
+        ival = d.ival;
+        fval = d.fval;
+        rid = d.rid;
+        pageNum = -1;
+        valid = true;
+    }
+};
+
+struct dataEntry
+{
+    string key;
+    int ival;
+    float fval;
+    RID rid;
+}
+
 class IX_ScanIterator;
 
 class IXFileHandle;
@@ -53,7 +81,34 @@ protected:
     IndexManager(const IndexManager &) = default;                               // Prevent construction by copying
     IndexManager &operator=(const IndexManager &) = default;                    // Prevent assignment
 
-};
+private:
+    RC transformKeyRIDPair(const Attribute &attribute,dataEntry &de,const void *key,const RID rid,unsigned &keyLen);
+    
+    RC resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen);
+    
+    RC getNewChildEntry(char *bin,const indexEntry newChildEntry,const Attribute attribute,unsigned &iLen);
+    
+    RC resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen);
+    
+    RC getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry &de,unsigned &cLen);
+
+    RC createNewRoot(IXFileHandle &ixFileHandle,const indexEntry &newChildEntry,
+        const unsigned leftChild,unsigned newRootPageNum);
+    
+    RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
+        const dataEntry &target,char *page,unsigned &offset);
+    
+    RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
+        const indexEntry &target,char *page,unsigned &offset);
+    
+    RC splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChildEntry,
+        unsigned insertOffset,char *index,char *bin,unsigned iLen,const unsigned pageNumber);
+    
+    RC splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildEntry,
+        const unsigned insertOffset,char *leaf,const char *composite,const unsigned ckLen,const unsigned pageNumber);
+    
+    RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const Attribute &attribute,
+        const void *key,const RID &rid,indexEntry &newChildEntry);
 
 class IX_ScanIterator {
 public:
@@ -71,7 +126,7 @@ public:
     RC close();
 };
 
-class IXFileHandle {
+class IXFileHandle:public FileHandle {
 public:
 
     // variables to keep counter for each operation
@@ -87,6 +142,8 @@ public:
 
     // Put the current counter values of associated PF FileHandles into variables
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
+    RC readRootPointer(unsigned &root);
+    RC writeRootPointer(const unsigned root);
 
 };
 
