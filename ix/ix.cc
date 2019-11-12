@@ -1,45 +1,26 @@
 #include "ix.h"
 
-PagedFileManager pfm = PagedFileManager::instance();
+//using namespace std;
 
 IndexManager &IndexManager::instance() {
     static IndexManager _index_manager = IndexManager();
     return _index_manager;
 }
 
-/**
-Hidden page format:
-    [ ixReadPageCounter = 0 || ixWritePageCounter = 0 || ixAppendPageCounter = 0 
-    || number of pages || dummy node list pointing to the root of indexes ]
-**/
 RC IndexManager::createFile(const std::string &fileName) {
-    //File already exists!
-    if(access(fileName.c_str(),F_OK) == 0)
-        return -1;
-    
-    FILE *fp = fopen(fileName.c_str(),"wb+");
-    //File open error!
-    if(!fp)
-        return -1;
-
-    byte cnt[PAGE_SIZE];
-    memset(cnt,0,sizeof(cnt));
-    fseek(fp,0,SEEK_SET);
-    fwrite(cnt,1,PAGE_SIZE,fp);
-    fclose(fp);
-    return 0;
+	return PagedFileManager::instance().createFile(fileName);
 }
 
 RC IndexManager::destroyFile(const std::string &fileName) {
-    return pfm.destroyFile(fileName);
+    return PagedFileManager::instance().destroyFile(fileName);
 }
 
 RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandle) {
-    return pfm.openFile(fileName,ixFileHandle);
+    return PagedFileManager::instance().openFile(fileName,ixFileHandle);
 }
 
 RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
-    return pfm.closeFile(ixFileHandle);
+    return PagedFileManager::instance().closeFile(ixFileHandle);
 }
 
 /***
@@ -74,6 +55,7 @@ RC IndexManager::transformKeyRIDPair(const Attribute &attribute,dataEntry &de,co
         de.key = string((char *)key,strLen+sizeof(unsigned));
         keyLen = sizeof(unsigned)+strLen+sizeof(RID);
     }
+
     de.rid = rid;
     return 0;
 }
@@ -81,7 +63,7 @@ RC IndexManager::transformKeyRIDPair(const Attribute &attribute,dataEntry &de,co
 /**
 The following five functions transform between binary stream and dataEntry/indexEntry struct
 **/
-RC resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen){
+RC IndexManager::resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen){
     char *cur = bin;
     if(attribute.type == AttrType::TypeInt){
         newChildEntry.ival = *(int *)cur++;
@@ -101,7 +83,7 @@ RC resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attr
     return 0;   
 }
 
-RC getNewChildEntry(char *bin,const indexEntry newChildEntry,const Attribute attribute,unsigned &iLen){
+RC IndexManager::getNewChildEntry(char *bin,const indexEntry newChildEntry,const Attribute attribute,unsigned &iLen){
     if(newChildEntry.valid){
         char *cur = bin;
         if(attribute.type == AttrType::TypeInt){
@@ -111,7 +93,7 @@ RC getNewChildEntry(char *bin,const indexEntry newChildEntry,const Attribute att
             *(float *)cur++ = newChildEntry.fval;
         }else{
             unsigned strLen = newChildEntry.key.length();
-            memcpy(cur,newChildEntry.key.c_str(),strLen);
+            memcpy(cur,(newChildEntry.key).c_str(),strLen);
             cur += strLen;
         }
         newChildEntry.rid.pageNum = *(unsigned *)cur++;
@@ -126,7 +108,7 @@ RC getNewChildEntry(char *bin,const indexEntry newChildEntry,const Attribute att
     }
 }
 
-RC resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen){
+RC IndexManager::resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen){
     char *composite = compositeKey;
     if(attribute.type == AttrType::TypeInt){
         de.ival = *(int *)composite++;
@@ -145,7 +127,7 @@ RC resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &
     return 0;
 }
 
-RC getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry &de,unsigned &cLen){
+RC IndexManager::getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry &de,unsigned &cLen){
     char *composite = compositeKey;
     if(attribute.type == AttrType::TypeInt){
         *(int *)composite++ = de.ival;
@@ -157,8 +139,8 @@ RC getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry 
         memcpy(composite,de.key.c_str(),strLen+sizeof(unsigned));
         composite += strLen+sizeof(unsigned);
     }
-    *(unsigned *)composite++ = rid.pageNum;
-    *(unsigned *)composite++ = rid.slotNum;
+    *(unsigned *)composite++ = de.rid.pageNum;
+    *(unsigned *)composite++ = de.rid.slotNum;
     cLen = composite-compositeKey;
 
     return 0;
@@ -167,7 +149,8 @@ RC getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry 
 End of these five functions.
 **/
 
-RC createNewRoot(IXFileHandle &ixFileHandle,const indexEntry &newChildEntry,const unsigned leftChild,unsigned newRootPageNum){
+RC IndexManager::createNewRoot(IXFileHandle &ixFileHandle,const indexEntry &newChildEntry,
+		const Attribute attribute,const unsigned leftChild,unsigned &newRootPageNum){
     char root[PAGE_SIZE];
     char *cur = root;
 
@@ -313,8 +296,8 @@ The following two 'split' functions split non-leaf/leaf nodes.To find 'the middl
 we scan from the beginning due to the lack of slot directory.
 The original node is named N,and the newly created one N2. 'index' stores data within N,and 'newn' stores data within N2.
 **/
-RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChildEntry,
-    unsigned insertOffset,char *index,char *bin,unsigned iLen,const unsigned pageNumber){
+RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChildEntry,const Attribute attribute,
+    unsigned insertOffset,char *index,char *bin,const unsigned iLen,const unsigned pageNumber){
     //Insert entry into the leaf node
     char data[2*PAGE_SIZE]; //Auxiliary double-size page
     char newn[PAGE_SIZE];
@@ -361,8 +344,8 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
         return -1;
 
     //Get new child entry
-    int iLen;
-    resolveNewChildEntry(cur,newChildEntry,attribute,iLen);
+    unsigned newLen;
+    resolveNewChildEntry(cur,newChildEntry,attribute,newLen);
     newChildEntry.pageNum = ixFileHandle.getNumberOfPages()-1;
 
     //Reset unused space to 0.Note that we should avoid reset the last 2 unsigned.
@@ -376,7 +359,7 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
     return 0;
 }
 
-RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildEntry,
+RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildEntry,const Attribute attribute,
     const unsigned insertOffset,char *leaf,const char *composite,const unsigned ckLen,const unsigned pageNumber){
     //Insert entry into the leaf node
     //Insert should be applied to 'leaf' page
@@ -414,8 +397,8 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
         return -1;
 
     //(key,rid) pairs should be copied because there might be dulplicates.
-    int iLen;
-    resolveNewChildEntry(cur,newChildEntry,attribute,ixFileHandle.getNumberOfPages()-1,iLen);
+    unsigned iLen;
+    resolveNewChildEntry(cur,newChildEntry,attribute,iLen);
 
     //Reset unused space to 0.Note that we should avoid reset the last 2 unsigned.
     //memset(page,0,PAGE_SIZE-(page-leaf)-2*sizeof(unsigned));
@@ -432,13 +415,14 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
 Big challenge here: assume we have to backtrace to split pages,if we have already written back some of these pages,
 but fail to write back certain page in some level of the tree, then there would be inconsistency among pages!
 **/
-RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const Attribute &attribute,
+RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const Attribute &attribute,
     const void *key,const RID &rid,indexEntry &newChildEntry){
     int ival = 0;//pn is page number to be searched in the next level of B+ tree
     float fval = 0;
     string str;
     unsigned insertLen = 0;
-    byte page[PAGE_SIZE];
+    bool isFull = true;
+    char page[PAGE_SIZE];
     int rc = ixFileHandle.readPage(pageNumber,page);
     if(rc != 0)
         return -1;
@@ -454,7 +438,6 @@ RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const At
         //Leaf node case
         char composite[PAGE_SIZE];
         getCompositeKey(composite,attribute,keyEntry,ckLen);
-        bool isFull = true;
         isFull = freeSpaceOffset+ckLen > PAGE_SIZE-4*sizeof(unsigned);        
 
         unsigned offset;
@@ -468,7 +451,7 @@ RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const At
             *(unsigned *)(page+PAGE_SIZE-sizeof(unsigned)) += ckLen; //Change free space indicator
             //newChildEntry.valid = false;
         }else{
-            splitDataEntry(ixFileHandle,newChildEntry,page+offset,page,composite,ckLen,pageNumber);
+            splitDataEntry(ixFileHandle,newChildEntry,attribute,offset,page,composite,ckLen,pageNumber);
         }
     }else{
         //Non-leaf node case
@@ -476,7 +459,7 @@ RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const At
         unsigned offset;
         searchEntry(ixFileHandle,attribute,indexEntry(keyEntry),page,offset);
         
-        rc = recursiveInsert(ixFileHandle,*(unsigned *)(page+offset-sizeof(unsigned)),attribute,key,rid,newChildEntry);
+        rc = backtraceInsert(ixFileHandle,*(unsigned *)(page+offset-sizeof(unsigned)),attribute,key,rid,newChildEntry);
         //Backtrace: If there is no split in the lower level,i.e. newChildEntry == NULL,return.
         if(rc != 0)
             return -1;
@@ -505,13 +488,13 @@ RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const At
                 *(unsigned *)(page+PAGE_SIZE-sizeof(unsigned)) += iLen; //Change free space indicator
                 newChildEntry.valid = false; //Set newChildEntry to be NULL
             }else{ //Since no enough space,split index node
-                splitIndexEntry(ixFileHandle,newChildEntry,offset,page,bin,iLen,pageNumber);
+                splitIndexEntry(ixFileHandle,newChildEntry,attribute,offset,page,bin,iLen,pageNumber);
                 //If this page is root node,then create a new root node
                 unsigned rootPageNum;
                 ixFileHandle.readRootPointer(rootPageNum);
                 if(pageNumber == rootPageNum){
                     unsigned curRoot;
-                    rc = createNewRoot(ixFileHandle,newChildEntry,pageNumber,curRoot);
+                    rc = createNewRoot(ixFileHandle,newChildEntry,attribute,pageNumber,curRoot);
                     if(rc != 0)
                         return -1;
                     rc = ixFileHandle.writeRootPointer(curRoot);
@@ -521,6 +504,7 @@ RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const At
             }
         }
     }
+
     rc = ixFileHandle.writePage(pageNumber,page);
     if(rc != 0)
         return -1;
@@ -529,12 +513,12 @@ RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const At
 }
 
 RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
-    //unsigned pn,offset;//page number,offset
-    //searchEntry(ixFileHandle,attribute,key,pn,offset);
+	unsigned root;
+	ixFileHandle.readRootPointer(root);
+	indexEntry newChildEntry;
+	backtraceInsert(ixFileHandle, root, attribute, key, rid, newChildEntry);
 
-
-
-    return -1;
+    return 0;
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
@@ -578,7 +562,10 @@ IXFileHandle::~IXFileHandle() {
 }
 
 /**
-Read root pointer from hidden page
+Hidden page format:
+    [ ixReadPageCounter = 0 || ixWritePageCounter = 0 || ixAppendPageCounter = 0
+    || number of pages || dummy node list pointing to the root of indexes ]
+This function reads root pointer from hidden page.
 **/
 RC IXFileHandle::readRootPointer(unsigned &root){
     fseek( fp, 4*sizeof(unsigned), SEEK_SET );
