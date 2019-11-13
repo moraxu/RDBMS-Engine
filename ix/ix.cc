@@ -1,6 +1,10 @@
 #include "ix.h"
+#include <iostream>
+#include <stdio.h>
+#include <map>
+#include <string>
 
-//using namespace std;
+using namespace std;
 
 IndexManager &IndexManager::instance() {
     static IndexManager _index_manager = IndexManager();
@@ -34,7 +38,7 @@ In addition,
 the last 0-3 bytes in a non-leaf index page are used to indicate the first unused byte,
 the last 4-7 bytes are used to indicate whether it's a leaf page(1 for yes and 0 for no);
 For leaf index page,we use Alternative 3,and the page format is:
-    [ key value || rid list size || rid list ],...
+    [ key value || rid ],...
 In addition,
 the last 0-3 bytes in a non-leaf index page are used to indicate the first unused byte,
 the last 4-7 bytes are used to indicate whether it's a leaf page,
@@ -66,18 +70,23 @@ The following five functions transform between binary stream and dataEntry/index
 RC IndexManager::resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen){
     char *cur = bin;
     if(attribute.type == AttrType::TypeInt){
-        newChildEntry.ival = *(int *)cur++;
+        newChildEntry.ival = *(int *)cur;
+        cur += sizeof(int);
     }
     else if(attribute.type == AttrType::TypeReal){
-        newChildEntry.fval = *(float *)cur++;
+        newChildEntry.fval = *(float *)cur;
+        cur += sizeof(float);
     }else{
         unsigned strLen = *(unsigned *)cur;
         newChildEntry.key = string(cur,strLen+sizeof(unsigned));
         cur += strLen+sizeof(unsigned);
     }
-    newChildEntry.rid.pageNum = *(unsigned *)cur++;
-    newChildEntry.rid.slotNum = *(unsigned *)cur++;
-    newChildEntry.pageNum = *(unsigned *)cur++;
+    newChildEntry.rid.pageNum = *(unsigned *)cur;
+    cur += sizeof(unsigned);
+    newChildEntry.rid.slotNum = *(unsigned *)cur;
+    cur += sizeof(unsigned);
+    newChildEntry.pageNum = *(unsigned *)cur;
+    cur += sizeof(unsigned);
     newChildEntry.valid = true;
     iLen = cur-bin;
     return 0;   
@@ -87,18 +96,23 @@ RC IndexManager::getNewChildEntry(char *bin,const indexEntry newChildEntry,const
     if(newChildEntry.valid){
         char *cur = bin;
         if(attribute.type == AttrType::TypeInt){
-            *(int *)cur++ = newChildEntry.ival;
+            *(int *)cur = newChildEntry.ival;
+            cur += sizeof(int);
         }
         else if(attribute.type == AttrType::TypeReal){
-            *(float *)cur++ = newChildEntry.fval;
+            *(float *)cur = newChildEntry.fval;
+            cur += sizeof(float);
         }else{
             unsigned strLen = newChildEntry.key.length();
             memcpy(cur,(newChildEntry.key).c_str(),strLen);
             cur += strLen;
         }
-        newChildEntry.rid.pageNum = *(unsigned *)cur++;
-        newChildEntry.rid.slotNum = *(unsigned *)cur++;
-        newChildEntry.pageNum = *(unsigned *)cur++;
+        *(unsigned *)cur = newChildEntry.rid.pageNum;
+        cur += sizeof(unsigned);
+        *(unsigned *)cur = newChildEntry.rid.slotNum;
+        cur += sizeof(unsigned);
+        *(unsigned *)cur = newChildEntry.pageNum;
+        cur += sizeof(unsigned);
         iLen = cur-bin;
         return 0;
     }else{
@@ -111,17 +125,21 @@ RC IndexManager::getNewChildEntry(char *bin,const indexEntry newChildEntry,const
 RC IndexManager::resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen){
     char *composite = compositeKey;
     if(attribute.type == AttrType::TypeInt){
-        de.ival = *(int *)composite++;
+        de.ival = *(int *)composite;
+        composite += sizeof(int);
     }
     else if(attribute.type == AttrType::TypeReal){
-        de.fval = *(float *)composite++;
+        de.fval = *(float *)composite;
+        composite += sizeof(float);
     }else{
         unsigned strLen = *(unsigned *)composite;
         de.key = string(composite,strLen+sizeof(unsigned)); 
         composite += strLen+sizeof(unsigned);
     }
-    de.rid.pageNum = *(unsigned *)composite++;
-    de.rid.slotNum = *(unsigned *)composite++;
+    de.rid.pageNum = *(unsigned *)composite;
+    composite += sizeof(unsigned);
+    de.rid.slotNum = *(unsigned *)composite;
+    composite += sizeof(unsigned);
     cLen = composite-compositeKey;
 
     return 0;
@@ -130,17 +148,21 @@ RC IndexManager::resolveCompositeKey(char *compositeKey,const Attribute &attribu
 RC IndexManager::getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry &de,unsigned &cLen){
     char *composite = compositeKey;
     if(attribute.type == AttrType::TypeInt){
-        *(int *)composite++ = de.ival;
+        *(int *)composite = de.ival;
+        composite += sizeof(int);
     }
     else if(attribute.type == AttrType::TypeReal){
-        *(float *)composite++ = de.fval;
+        *(float *)composite = de.fval;
+        composite += sizeof(float);
     }else{
         unsigned strLen = *(unsigned *)de.key.c_str();
         memcpy(composite,de.key.c_str(),strLen+sizeof(unsigned));
         composite += strLen+sizeof(unsigned);
     }
-    *(unsigned *)composite++ = de.rid.pageNum;
-    *(unsigned *)composite++ = de.rid.slotNum;
+    *(unsigned *)composite = de.rid.pageNum;
+    composite += sizeof(unsigned);
+    *(unsigned *)composite = de.rid.slotNum;
+    composite += sizeof(unsigned);
     cLen = composite-compositeKey;
 
     return 0;
@@ -313,15 +335,16 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
     unsigned spaceLeft = 0;
     while(spaceLeft < spaceToBeSplit/2.0){
         if(attribute.type == AttrType::TypeInt){
-            cur += sizeof(int)+sizeof(RID)+sizeof(unsigned);
+        	spaceLeft += sizeof(int)+sizeof(RID)+sizeof(unsigned);
         }
         else if(attribute.type == AttrType::TypeReal){
-            cur += sizeof(float)+sizeof(RID)+sizeof(unsigned);
+        	spaceLeft += sizeof(float)+sizeof(RID)+sizeof(unsigned);
         }else{
             unsigned strLen = *(unsigned *)(cur);
-            cur += strLen+sizeof(RID)+sizeof(unsigned);
+            spaceLeft += strLen+sizeof(RID)+sizeof(unsigned);
         }
     }
+    cur += spaceLeft;
 
     //Create a new index node called N2.Here 'the middle point' is not included in N2,which is a big difference with splitDataEntry.
     char *start = cur;
@@ -376,21 +399,24 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     unsigned spaceLeft = 0;
     while(spaceLeft < spaceToBeSplit/2.0){
         if(attribute.type == AttrType::TypeInt){
-            cur += sizeof(int)+sizeof(RID);
+        	spaceLeft += sizeof(int)+sizeof(RID);
         }
         else if(attribute.type == AttrType::TypeReal){
-            cur += sizeof(float)+sizeof(RID);
+        	spaceLeft += sizeof(float)+sizeof(RID);
         }else{
             unsigned strLen = *(unsigned *)(cur);
-            cur += strLen+sizeof(RID)+sizeof(unsigned);
+            spaceLeft += strLen+sizeof(RID)+sizeof(unsigned);
         }
     }
+    cur += spaceLeft;
 
     //create a new leaf node called L2
     memcpy(newn,cur,spaceToBeSplit-(cur-data));
     *(unsigned *)(newn+PAGE_SIZE-sizeof(unsigned)) = spaceToBeSplit-(cur-data); //Set free space indicator for N2
     *(unsigned *)(newn+PAGE_SIZE-2*sizeof(unsigned)) = 1;
-    *(unsigned *)(newn+PAGE_SIZE-3*sizeof(unsigned)) = pageNumber;
+    *(unsigned *)(newn+PAGE_SIZE-4*sizeof(unsigned)) = pageNumber;
+    unsigned rightSib = *(unsigned *)(leaf+PAGE_SIZE-3*sizeof(unsigned));
+    *(unsigned *)(newn+PAGE_SIZE-3*sizeof(unsigned)) = rightSib;
     //After deletion there would be unused page, a linked list for these unused page remains to be implemented.
     int rc = ixFileHandle.appendPage(newn);
     if(rc != 0)
@@ -399,6 +425,17 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     //(key,rid) pairs should be copied because there might be dulplicates.
     unsigned iLen;
     resolveNewChildEntry(cur,newChildEntry,attribute,iLen);
+    newChildEntry.pageNum = ixFileHandle.getNumberOfPages()-1;
+
+    //Change the sibling pointer of the leaf node that N originally points to.
+    char r[PAGE_SIZE];
+    rc = ixFileHandle.readPage(rightSib, r);
+    if(rc != 0)
+        return -1;
+    *(unsigned *)(r+PAGE_SIZE-4*sizeof(unsigned)) = ixFileHandle.getNumberOfPages()-1;
+    rc = ixFileHandle.writePage(rightSib, r);
+    if(rc != 0)
+        return -1;
 
     //Reset unused space to 0.Note that we should avoid reset the last 2 unsigned.
     //memset(page,0,PAGE_SIZE-(page-leaf)-2*sizeof(unsigned));
@@ -417,10 +454,6 @@ but fail to write back certain page in some level of the tree, then there would 
 **/
 RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const Attribute &attribute,
     const void *key,const RID &rid,indexEntry &newChildEntry){
-    int ival = 0;//pn is page number to be searched in the next level of B+ tree
-    float fval = 0;
-    string str;
-    unsigned insertLen = 0;
     bool isFull = true;
     char page[PAGE_SIZE];
     int rc = ixFileHandle.readPage(pageNumber,page);
@@ -514,9 +547,27 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
 
 RC IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
 	unsigned root;
-	ixFileHandle.readRootPointer(root);
+
+	if(ixFileHandle.noPages == 0){
+		char firstPage[PAGE_SIZE];
+		memset(firstPage,0,sizeof(firstPage));
+		*(unsigned *)(firstPage+PAGE_SIZE-sizeof(unsigned)) = 0;
+		*(unsigned *)(firstPage+PAGE_SIZE-2*sizeof(unsigned)) = 1;
+		*(int *)(firstPage+PAGE_SIZE-3*sizeof(int)) = -1;
+		*(int *)(firstPage+PAGE_SIZE-3*sizeof(int)) = -1;
+		int rc = ixFileHandle.appendPage(firstPage);
+		if(rc != 0)
+			return -1;
+	}
+
+	int rc = ixFileHandle.readRootPointer(root);
+	if(rc != 0)
+	    return -1;
+
 	indexEntry newChildEntry;
-	backtraceInsert(ixFileHandle, root, attribute, key, rid, newChildEntry);
+	rc = backtraceInsert(ixFileHandle, root, attribute, key, rid, newChildEntry);
+	if(rc != 0)
+	    return -1;
 
     return 0;
 }
@@ -536,6 +587,90 @@ RC IndexManager::scan(IXFileHandle &ixFileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
+	unsigned root;
+	int rc = ixFileHandle.readRootPointer(root);
+	if(rc != 0)
+		return;
+
+	printNode(ixFileHandle, attribute, root, 0);
+	return;
+}
+
+void IndexManager::printTab(const unsigned level){
+	for(int i = 0;i < level;i++)
+		cout<<"\t";
+}
+
+string IndexManager::RIDtoStr(const RID &rid){
+	string ridStr;
+	ridStr += "(";
+	ridStr += to_string(rid.pageNum);
+	ridStr += ",";
+	ridStr += to_string(rid.slotNum);
+	ridStr += ")";
+	return ridStr;
+}
+
+void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attribute,const unsigned pageNumber,const unsigned level){
+	char node[PAGE_SIZE];
+	int rc = ixFileHandle.readPage(pageNumber, node);
+	if(rc != 0)
+		return;
+
+	char *cur = node;
+	unsigned isLeaf = *(unsigned *)(node+PAGE_SIZE-2*sizeof(unsigned));
+	unsigned freeSpaceOffset = *(unsigned *)(node+PAGE_SIZE-sizeof(unsigned));
+	printTab(level);
+	cout<<"{\"keys\":[";
+	if(isLeaf){
+		map<string,vector<string> > dn;
+		while(cur-node < freeSpaceOffset){
+			dataEntry dEntry;
+			unsigned cLen;
+			resolveCompositeKey(cur, attribute, dEntry, cLen);
+			if(attribute.type == AttrType::TypeInt){
+				dn[to_string(dEntry.ival)].push_back(RIDtoStr(dEntry.rid));
+			}
+			else if(attribute.type == AttrType::TypeReal){
+				dn[to_string(dEntry.fval)].push_back(RIDtoStr(dEntry.rid));
+			}else{
+				dn[dEntry.key].push_back(RIDtoStr(dEntry.rid));
+			}
+		}
+		for(auto it = dn.begin();it != dn.end();){
+			cout<<"\""<<it->first<<":[";
+			for(int i = 0;i < it->second.size();i++){
+				cout<<it->second[i];
+				if(i < it->second.size()-1) cout<<",";
+			}
+			cout<<"]\"";
+			if(++it != dn.end()) cout<<",";
+		}
+		cout<<"]}";
+		return;
+	}else{
+		vector<unsigned> pointers;
+		while(cur-node < freeSpaceOffset){
+			indexEntry iEntry;
+			unsigned iLen;
+			resolveNewChildEntry(cur, iEntry, attribute, iLen);
+			pointers.push_back(iEntry.pageNum);
+			cout<<"\""<<iEntry.key<<"\"";
+			cur += iLen;
+			if(cur-node < freeSpaceOffset){
+				cout<<",";
+			}
+		}
+		cout<<"],"<<endl;
+		printTab(level);
+		cout<<" \"children\": ["<<endl;
+		for(int i = 0;i < pointers.size();i++){
+			printNode(ixFileHandle,attribute,pointers[i],level+1);
+			if(i != pointers.size()-1)
+				cout<<","<<endl;
+		}
+		cout<<endl<<"]}";
+	}
 }
 
 IX_ScanIterator::IX_ScanIterator() {
@@ -556,9 +691,61 @@ IXFileHandle::IXFileHandle() {
     ixReadPageCounter = 0;
     ixWritePageCounter = 0;
     ixAppendPageCounter = 0;
+    noPages = 0;
+    fp = nullptr;
 }
 
 IXFileHandle::~IXFileHandle() {
+}
+
+RC IXFileHandle::readPage(PageNum pageNum, void *data){
+	//Intend to read a non-existing page!
+	//Fix test case 06
+	if(pageNum >= noPages){
+		ixReadPageCounter++;
+		return -1;
+	}
+
+	//NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
+	fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
+	unsigned res = fread(data,sizeof(char),PAGE_SIZE,fp);
+	//File read error!
+	if(res != PAGE_SIZE && feof(fp) != EOF)
+		return -1;
+
+	ixReadPageCounter++;
+	return 0;
+}
+
+RC IXFileHandle::writePage(PageNum pageNum, const void *data){
+	//Intend to update a non-existing page!
+	//Fix test case 06
+	if(pageNum >= noPages){
+		ixWritePageCounter++;
+		return -1;
+	}
+
+	//NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
+	fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
+	unsigned res = fwrite(data,sizeof(char),PAGE_SIZE,fp);
+	//File write error!
+	if(res != PAGE_SIZE)
+		return -1;
+
+	ixWritePageCounter++;
+	return 0;
+}
+
+RC IXFileHandle::appendPage(const void *data){
+	fseek( fp, 0, SEEK_END );
+	unsigned res = fwrite(data,sizeof(char),PAGE_SIZE,fp);
+	//File append error!
+	if(res != PAGE_SIZE)
+		return -1;
+
+	noPages++;
+	ixAppendPageCounter++;
+	return 0;
 }
 
 /**
@@ -569,16 +756,16 @@ This function reads root pointer from hidden page.
 **/
 RC IXFileHandle::readRootPointer(unsigned &root){
     fseek( fp, 4*sizeof(unsigned), SEEK_SET );
-    int rc = fread(&root,sizeof(unsigned),1,fp);
-    if(rc != 0)
+    unsigned rc = fread(&root,sizeof(unsigned),1,fp);
+    if(rc != 1)
         return -1;
     return 0;
 }
 
 RC IXFileHandle::writeRootPointer(const unsigned root){
     fseek( fp, 4*sizeof(unsigned), SEEK_SET );
-    int rc = fwrite(&root,sizeof(unsigned),1,fp);
-    if(rc != 0)
+    unsigned rc = fwrite(&root,sizeof(unsigned),1,fp);
+    if(rc != 1)
         return -1;
     return 0;
 }

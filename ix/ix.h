@@ -119,6 +119,13 @@ private:
     
     RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const Attribute &attribute,
         const void *key,const RID &rid,indexEntry &newChildEntry);
+
+    void printTab(const unsigned level);
+
+    string RIDtoStr(const RID &rid);
+
+    void printNode(IXFileHandle &ixFileHandle, const Attribute &attribute,
+    		const unsigned pageNumber,const unsigned level);
 };
 
 class IX_ScanIterator {
@@ -150,6 +157,12 @@ public:
 
     // Destructor
     ~IXFileHandle();
+
+    RC readPage(PageNum pageNum, void *data);
+
+    RC writePage(PageNum pageNum, const void *data);
+
+    RC appendPage(const void *data);
 
     // Put the current counter values of associated PF FileHandles into variables
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
