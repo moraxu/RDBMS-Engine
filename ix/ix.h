@@ -46,9 +46,110 @@ struct indexEntry
     }
 };
 
-class IX_ScanIterator;
+class IXFileHandle: public FileHandle {
+public:
 
-class IXFileHandle;
+    // variables to keep counter for each operation
+    unsigned ixReadPageCounter;
+    unsigned ixWritePageCounter;
+    unsigned ixAppendPageCounter;
+
+    // Constructor
+    IXFileHandle();
+
+    // Destructor
+    ~IXFileHandle();
+
+    RC readPage(PageNum pageNum, void *data);
+
+    RC writePage(PageNum pageNum, const void *data);
+
+    RC appendPage(const void *data);
+
+    // Put the current counter values of associated PF FileHandles into variables
+    RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
+
+    RC readRootPointer(unsigned &root);
+
+    RC writeRootPointer(const unsigned root);
+};
+
+class IX_ScanIterator {
+    IXFileHandle ixFileHandle;
+    Attribute attribute;
+    //These data entry objects contain the value from lowKey/highKey - so that we don't have to cast every time
+    dataEntry lowKeyEntry;
+    bool lowKeyInfinity = false;
+    dataEntry highKeyEntry;
+    bool highKeyInfinity = false;
+    bool lowKeyInclusive;
+    bool highKeyInclusive;
+
+    bool scanStarted;
+    bool enteredNewPage;
+
+    unsigned currPage;
+    unsigned currOffset;
+
+    unsigned lastReadFreeSpaceOffset;
+    unsigned lastReadDataEntryLength;
+
+    RC determineInitialPageAndOffset();
+    void* transformDataEntryKey(dataEntry dataEnt, void* key) const;
+
+public:
+    const IXFileHandle &getIxFileHandle() const;
+
+    void setIxFileHandle(const IXFileHandle &ixFileHandle);
+
+    const Attribute &getAttribute() const;
+
+    void setAttribute(const Attribute &attribute);
+
+    const dataEntry &getLowKeyEntry() const;
+
+    void setLowKeyEntry(const dataEntry &lowKeyEntry);
+
+    const dataEntry &getHighKeyEntry() const;
+
+    void setHighKeyEntry(const dataEntry &highKeyEntry);
+
+    bool isLowKeyInclusive() const;
+
+    void setLowKeyInclusive(bool lowKeyInclusive);
+
+    bool isHighKeyInclusive() const;
+
+    void setHighKeyInclusive(bool highKeyInclusive);
+
+    bool isLowKeyInfinity() const;
+
+    void setLowKeyInfinity(bool lowKeyInfinity);
+
+    bool isHighKeyInfinity() const;
+
+    void setHighKeyInfinity(bool highKeyInfinity);
+
+    bool isScanStarted() const;
+
+    void setScanStarted(bool scanStarted);
+
+    bool isEnteredNewPage() const;
+
+    void setEnteredNewPage(bool newPage);
+
+    // Constructor
+    IX_ScanIterator();
+
+    // Destructor
+    ~IX_ScanIterator();
+
+    // Get next matching entry
+    RC getNextEntry(RID &rid, void *key);
+
+    // Terminate index scan
+    RC close();
+};
 
 class IndexManager {
 
@@ -85,6 +186,17 @@ public:
     // Print the B+ tree in pre-order (in a JSON record format)
     void printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const;
 
+    // Assigns to pageNo the number of first leaf page or return -1 if there aren't any pages in the tree
+    RC findFirstLeafPage(IXFileHandle& fileHandle, unsigned& pageNo);
+
+    // Assigns to pageNo the number of the leaf page that SHOULD contain the given key
+    RC searchIndexTree(IXFileHandle& fileHandle, const Attribute& attribute, const dataEntry& dataEnt, unsigned& leafPageNo);
+
+    RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
+                   const dataEntry &target,char *page,unsigned &offset);
+
+    RC resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen) const;
+
 protected:
     IndexManager() = default;                                                   // Prevent construction
     ~IndexManager() = default;                                                  // Prevent unwanted destruction
@@ -94,19 +206,14 @@ protected:
 private:
     RC transformKeyRIDPair(const Attribute &attribute,dataEntry &de,const void *key,const RID rid,unsigned &keyLen);
     
-    RC resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen);
+    RC resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen) const;
     
     RC getNewChildEntry(char *bin,const indexEntry newChildEntry,const Attribute attribute,unsigned &iLen);
-    
-    RC resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen);
     
     RC getCompositeKey(char *compositeKey,const Attribute attribute,const dataEntry &de,unsigned &cLen);
 
     RC createNewRoot(IXFileHandle &ixFileHandle,const indexEntry &newChildEntry,
     		const Attribute attribute,const unsigned leftChild,unsigned &newRootPageNum);
-    
-    RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
-    		const dataEntry &target,char *page,unsigned &offset);
     
     RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
     		const indexEntry &target,char *page,unsigned &offset);
@@ -120,56 +227,14 @@ private:
     RC backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageNumber,const Attribute &attribute,
         const void *key,const RID &rid,indexEntry &newChildEntry);
 
-    void printTab(const unsigned level);
+    RC searchIndexTree(IXFileHandle& fileHandle, const unsigned pageNumber, const Attribute& attribute, const dataEntry& dataEnt, unsigned& leafPageNo);
 
-    string RIDtoStr(const RID &rid);
+    void printTab(const unsigned level) const;
+
+    string RIDtoStr(const RID &rid) const ;
 
     void printNode(IXFileHandle &ixFileHandle, const Attribute &attribute,
-    		const unsigned pageNumber,const unsigned level);
-};
-
-class IX_ScanIterator {
-public:
-
-    // Constructor
-    IX_ScanIterator();
-
-    // Destructor
-    ~IX_ScanIterator();
-
-    // Get next matching entry
-    RC getNextEntry(RID &rid, void *key);
-
-    // Terminate index scan
-    RC close();
-};
-
-class IXFileHandle: public FileHandle {
-public:
-
-    // variables to keep counter for each operation
-    unsigned ixReadPageCounter;
-    unsigned ixWritePageCounter;
-    unsigned ixAppendPageCounter;
-
-    // Constructor
-    IXFileHandle();
-
-    // Destructor
-    ~IXFileHandle();
-
-    RC readPage(PageNum pageNum, void *data);
-
-    RC writePage(PageNum pageNum, const void *data);
-
-    RC appendPage(const void *data);
-
-    // Put the current counter values of associated PF FileHandles into variables
-    RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
-
-    RC readRootPointer(unsigned &root);
-
-    RC writeRootPointer(const unsigned root);
+    		const unsigned pageNumber,const unsigned level) const;
 };
 
 #endif
