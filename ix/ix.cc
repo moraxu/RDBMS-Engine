@@ -67,7 +67,8 @@ RC IndexManager::transformKeyRIDPair(const Attribute &attribute,dataEntry &de,co
 /**
 The following five functions transform between binary stream and dataEntry/indexEntry struct
 **/
-RC IndexManager::resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen){
+RC IndexManager::resolveNewChildEntry(char *bin,indexEntry &newChildEntry,
+		const Attribute attribute,unsigned &iLen) const{
     char *cur = bin;
     if(attribute.type == AttrType::TypeInt){
         newChildEntry.ival = *(int *)cur;
@@ -122,7 +123,8 @@ RC IndexManager::getNewChildEntry(char *bin,const indexEntry newChildEntry,const
     }
 }
 
-RC IndexManager::resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen){
+RC IndexManager::resolveCompositeKey(char *compositeKey,const Attribute &attribute,
+		dataEntry &de,unsigned &cLen) const{
     char *composite = compositeKey;
     if(attribute.type == AttrType::TypeInt){
         de.ival = *(int *)composite;
@@ -592,16 +594,16 @@ void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attri
 	if(rc != 0)
 		return;
 
-	printNode(ixFileHandle, attribute, root, 0);
+	printNode(ixFileHandle,attribute,root,0);
 	return;
 }
 
-void IndexManager::printTab(const unsigned level){
+void IndexManager::printTab(const unsigned level) const{
 	for(int i = 0;i < level;i++)
 		cout<<"\t";
 }
 
-string IndexManager::RIDtoStr(const RID &rid){
+string IndexManager::RIDtoStr(const RID &rid) const{
 	string ridStr;
 	ridStr += "(";
 	ridStr += to_string(rid.pageNum);
@@ -611,7 +613,8 @@ string IndexManager::RIDtoStr(const RID &rid){
 	return ridStr;
 }
 
-void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attribute,const unsigned pageNumber,const unsigned level){
+void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attribute,
+		const unsigned pageNumber,const unsigned level) const{
 	char node[PAGE_SIZE];
 	int rc = ixFileHandle.readPage(pageNumber, node);
 	if(rc != 0)
