@@ -85,8 +85,12 @@ class IX_ScanIterator {
     bool lowKeyInclusive;
     bool highKeyInclusive;
 
-    bool scanStarted;
-    bool enteredNewPage;
+    /*
+     * Scanning indicates whether a scanner is currently in scanning state.
+     * If a scanner is already in scanning state,it should not be assigned with another scan task.
+     */
+    bool scanning;
+    bool isNewPage;
 
     unsigned currPage;
     unsigned currOffset;
@@ -95,7 +99,8 @@ class IX_ScanIterator {
     unsigned lastReadDataEntryLength;
 
     RC determineInitialPageAndOffset();
-    void* transformDataEntryKey(dataEntry dataEnt, void* key) const;
+
+    void transformDataEntryKey(dataEntry dataEnt, void* key) const;
 
 public:
     const IXFileHandle &getIxFileHandle() const;
@@ -104,7 +109,7 @@ public:
 
     const Attribute &getAttribute() const;
 
-    void setAttribute(const Attribute &attribute);
+    void setAttribute(const Attribute attribute);
 
     const dataEntry &getLowKeyEntry() const;
 
@@ -130,13 +135,13 @@ public:
 
     void setHighKeyInfinity(bool highKeyInfinity);
 
-    bool isScanStarted() const;
+    bool isScanning() const;
 
-    void setScanStarted(bool scanStarted);
+    void setScanning(bool scanStarted);
 
-    bool isEnteredNewPage() const;
+    bool isIsNewPage() const;
 
-    void setEnteredNewPage(bool newPage);
+    void setIsNewPage(bool newPage);
 
     // Constructor
     IX_ScanIterator();
@@ -190,7 +195,7 @@ public:
     RC findFirstLeafPage(IXFileHandle& fileHandle, unsigned& pageNo);
 
     // Assigns to pageNo the number of the leaf page that SHOULD contain the given key
-    RC searchIndexTree(IXFileHandle& fileHandle, const Attribute& attribute, const dataEntry& dataEnt, unsigned& leafPageNo);
+    RC searchIndexTree(IXFileHandle& fileHandle, const unsigned pageNumber, const Attribute& attribute, const dataEntry& dataEnt, unsigned& leafPageNo);
 
     RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
                    const dataEntry &target,char *page,unsigned &offset);
