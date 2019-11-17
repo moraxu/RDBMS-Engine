@@ -49,13 +49,14 @@ int testCase_6(const std::string &indexFileName, const Attribute &attribute) {
     while (ix_ScanIterator.getNextEntry(rid, &key) == success) {
         count++;
 
-        if (rid.pageNum % 200 == 0) {
+        if (rid.pageNum % 50 == 0) {
             std::cerr << count << " - Returned rid: " << rid.pageNum << " " << rid.slotNum << std::endl;
         }
         outRidSlotNumSum += rid.slotNum;
     }
 
     // Inconsistency between insert and scan?
+    cout<<"inRidSlotNumSum:"<<inRidSlotNumSum<<" outRidSlotNumSum:"<<outRidSlotNumSum<<endl;
     if (inRidSlotNumSum != outRidSlotNumSum) {
         std::cerr << "Wrong entries output... The test failed." << std::endl;
         rc = ix_ScanIterator.close();

@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <stdio.h>
 
 #include "../rbf/rbfm.h"
 
@@ -46,19 +47,32 @@ struct indexEntry
     }
 };
 
-class IXFileHandle: public FileHandle {
+
+/**
+Hidden page format:
+    [ ixReadPageCounter = 0 || ixWritePageCounter = 0 || ixAppendPageCounter = 0
+    || number of pages || lastTableID || dummy node pointing to the root of the index ]
+This function reads root pointer from hidden page.
+**/
+class IXFileHandle {
 public:
 
     // variables to keep counter for each operation
     unsigned ixReadPageCounter;
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
+    unsigned noPages;
+    unsigned lastTableID;
+    unsigned rootPage;
+    FILE *fp;
 
     // Constructor
     IXFileHandle();
 
     // Destructor
     ~IXFileHandle();
+
+    bool isValid() { return fp != NULL; }
 
     RC readPage(PageNum pageNum, void *data);
 
@@ -69,9 +83,7 @@ public:
     // Put the current counter values of associated PF FileHandles into variables
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 
-    RC readRootPointer(unsigned &root);
-
-    RC writeRootPointer(const unsigned root);
+    unsigned getNumberOfPages() {return noPages;}
 };
 
 class IX_ScanIterator {
@@ -94,11 +106,13 @@ class IX_ScanIterator {
 
     unsigned currPage;
     unsigned currOffset;
-
     unsigned lastReadFreeSpaceOffset;
     unsigned lastReadDataEntryLength;
 
     RC determineInitialPageAndOffset();
+
+    // Assigns to pageNo the number of first leaf page or return -1 if there aren't any pages in the tree
+    RC findFirstLeafPage(IXFileHandle& fileHandle, unsigned& pageNo);
 
     void transformDataEntryKey(dataEntry dataEnt, void* key) const;
 
@@ -191,14 +205,18 @@ public:
     // Print the B+ tree in pre-order (in a JSON record format)
     void printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const;
 
-    // Assigns to pageNo the number of first leaf page or return -1 if there aren't any pages in the tree
-    RC findFirstLeafPage(IXFileHandle& fileHandle, unsigned& pageNo);
-
     // Assigns to pageNo the number of the leaf page that SHOULD contain the given key
-    RC searchIndexTree(IXFileHandle& fileHandle, const unsigned pageNumber, const Attribute& attribute, const dataEntry& dataEnt, unsigned& leafPageNo);
+    RC searchIndexTree(IXFileHandle& fileHandle, const unsigned pageNumber,
+    		const Attribute& attribute,const bool lowKeyInclusive, const dataEntry& dataEnt, unsigned& leafPageNo);
 
     RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
                    const dataEntry &target,char *page,unsigned &offset);
+
+    RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
+    		const indexEntry &target,const bool lowKeyInclusive,char *page,unsigned &offset);
+
+    RC searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
+                   const dataEntry &target,const bool lowKeyInclusive,char *page,unsigned &offset);
 
     RC resolveCompositeKey(char *compositeKey,const Attribute &attribute,dataEntry &de,unsigned &cLen) const;
 

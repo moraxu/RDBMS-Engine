@@ -53,7 +53,6 @@ public:
     FileHandle();                                                       // Default constructor
     ~FileHandle();                                                      // Destructor
 
-    bool isValid() { return fp != NULL; }
     RC readPage(PageNum pageNum, void *data);                           // Get a specific page
     RC writePage(PageNum pageNum, const void *data);                    // Write a specific page
     RC appendPage(const void *data);                                    // Append a specific page
