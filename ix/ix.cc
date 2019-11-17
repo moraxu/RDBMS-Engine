@@ -694,7 +694,10 @@ RC IndexManager::scan(IXFileHandle &ixFileHandle,
                       bool lowKeyInclusive,
                       bool highKeyInclusive,
                       IX_ScanIterator &ix_ScanIterator) {
-    ix_ScanIterator.setIxFileHandle(ixFileHandle);
+    if(!ixFileHandle.isValid()) {
+        return -1;
+    }
+    ix_ScanIterator.setIxFileHandle(&ixFileHandle);
     ix_ScanIterator.setAttribute(attribute);
 
     dataEntry lowKeyEntry;
@@ -833,7 +836,7 @@ IX_ScanIterator::~IX_ScanIterator() {
 RC IX_ScanIterator::determineInitialPageAndOffset() {
     RC rc;
     if(lowKeyInfinity) {
-        rc = IndexManager::instance().findFirstLeafPage(ixFileHandle, currPage);
+        rc = IndexManager::instance().findFirstLeafPage(*ixFileHandle, currPage);
         if(rc != 0) {
             return rc;
         }
@@ -846,22 +849,22 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     	 * (the one without the second page number parameter) is deleted for simplification.
     	 */
 		unsigned rootPage;
-		RC rc = ixFileHandle.readRootPointer(rootPage);
+		RC rc = ixFileHandle->readRootPointer(rootPage);
 		if(rc != 0)
 			return -1;
 
-        rc = IndexManager::instance().searchIndexTree(ixFileHandle,rootPage,attribute,lowKeyEntry, currPage);
+        rc = IndexManager::instance().searchIndexTree(*ixFileHandle,rootPage,attribute,lowKeyEntry, currPage);
         if(rc != 0) {
             return rc;
         }
     }
 
     char page[PAGE_SIZE];
-    rc = ixFileHandle.readPage(currPage,page);
+    rc = ixFileHandle->readPage(currPage,page);
     if(rc != 0) {
         return rc;
     }
-    rc = IndexManager::instance().searchEntry(ixFileHandle, attribute, lowKeyEntry, page, currOffset);
+    rc = IndexManager::instance().searchEntry(*ixFileHandle, attribute, lowKeyEntry, page, currOffset);
     if(rc != 0) {
         return rc;
     }
@@ -982,7 +985,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
     //-----------------------------------------------------------------------------------------------------------
 
     char page[PAGE_SIZE];
-    RC rc = ixFileHandle.readPage(currPage,page);
+    RC rc = ixFileHandle->readPage(currPage,page);
     if(rc != 0) {
         return rc;
     }
@@ -1008,7 +1011,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
             return IX_EOF;
         }
         //There is next page
-        rc = ixFileHandle.readPage(currPage,page);
+        rc = ixFileHandle->readPage(currPage,page);
         if(rc != 0) {
             return rc;
         }
@@ -1063,14 +1066,17 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
 }
 
 RC IX_ScanIterator::close() {
-    return PagedFileManager::instance().closeFile(ixFileHandle);
+    //Commented due to the clash with ixtest_03 - author of the test
+    //tries to close ixFileHandle in addition to calling this method
+    //return PagedFileManager::instance().closeFile(*ixFileHandle);
+    return 0; //Who designed this twisted API!?
 }
 
-const IXFileHandle &IX_ScanIterator::getIxFileHandle() const {
+const IXFileHandle* IX_ScanIterator::getIxFileHandle() const {
     return ixFileHandle;
 }
 
-void IX_ScanIterator::setIxFileHandle(const IXFileHandle &ixFileHandle) {
+void IX_ScanIterator::setIxFileHandle(IXFileHandle* ixFileHandle) {
     this->ixFileHandle = ixFileHandle;
 }
 

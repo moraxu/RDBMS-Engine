@@ -73,6 +73,9 @@ RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandl
 }
 
 RC PagedFileManager::closeFile(FileHandle &fileHandle) {
+    if(fileHandle.fp == NULL) {
+        return -1;
+    }
     fseek(fileHandle.fp, 0, SEEK_SET);
     unsigned cnt[5];
     cnt[0] = fileHandle.readPageCounter;
@@ -82,8 +85,10 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle) {
     cnt[4] = fileHandle.lastTableID;
     fwrite(cnt,sizeof(unsigned),5,fileHandle.fp);
     //File close error!
-    if(fclose(fileHandle.fp) == EOF)
+    if(fclose(fileHandle.fp) == EOF) {
         return -1;
+    }
+    fileHandle.fp = NULL;
     return 0;
 }
 
