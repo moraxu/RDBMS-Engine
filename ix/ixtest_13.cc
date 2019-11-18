@@ -47,6 +47,8 @@ int testCase_13(const std::string &indexFileName, const Attribute &attribute) {
         rid.pageNum = i;
         rid.slotNum = i;
 
+        //cout<<i<<"th data entry length(before insertion):"<<3*sizeof(unsigned)+count<<endl;
+
         rc = indexManager.insertEntry(ixFileHandle, attribute, &key, rid);
         assert(rc == success && "indexManager::insertEntry() should not fail.");
 
@@ -60,6 +62,7 @@ int testCase_13(const std::string &indexFileName, const Attribute &attribute) {
     for (unsigned j = 0; j < tested_ascii; j++) {
         key[4 + j] = 'a' + tested_ascii - 1;
     }
+    cout<<"Compare equal with:"<<string(key,tested_ascii)<<endl;
     for (unsigned i = 1; i < numOfMoreTuples; i++) {
         rid.pageNum = 26 * (50 + i) + tested_ascii;
         rid.slotNum = 26 * (50 + i) + tested_ascii;

@@ -149,6 +149,7 @@ RC IndexManager::resolveNewChildEntry(char *bin,indexEntry &newChildEntry,
     }else{
         unsigned strLen = *(unsigned *)cur;
         newChildEntry.key = string(cur+sizeof(unsigned),strLen);
+        //cout<<newChildEntry.key<<endl;
         cur += strLen+sizeof(unsigned);
     }
     newChildEntry.rid.pageNum = *(unsigned *)cur;
@@ -505,19 +506,20 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
     //Search for 'the middle point'
     //The search process can be omptimized by starting from the insert place
     char *cur = data;
-    unsigned spaceLeft = 0;
-    while(spaceLeft < spaceToBeSplit/2.0){
-        if(attribute.type == AttrType::TypeInt){
-        	spaceLeft += sizeof(int)+sizeof(RID)+sizeof(unsigned);
-        }
-        else if(attribute.type == AttrType::TypeReal){
-        	spaceLeft += sizeof(float)+sizeof(RID)+sizeof(unsigned);
-        }else{
-            unsigned strLen = *(unsigned *)(cur);
-            spaceLeft += strLen+sizeof(RID)+sizeof(unsigned);
-        }
-    }
-    cur += spaceLeft;
+	unsigned dataLen = 0;
+	cur += sizeof(unsigned);
+	while(cur+dataLen-data < spaceToBeSplit/2.0){
+		cur += dataLen;
+		if(attribute.type == AttrType::TypeInt){
+			dataLen = sizeof(int)+sizeof(RID)+sizeof(unsigned);
+		}
+		else if(attribute.type == AttrType::TypeReal){
+			dataLen = sizeof(float)+sizeof(RID)+sizeof(unsigned);
+		}else{
+			unsigned strLen = *(unsigned *)(cur);
+			dataLen = strLen+sizeof(RID)+2*sizeof(unsigned);
+		}
+	}
 
     //Create a new index node called N2.Here 'the middle point' is not included in N2,which is a big difference with splitDataEntry.
     char *start = cur;
@@ -528,20 +530,22 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
         start += sizeof(float)+sizeof(RID)+sizeof(unsigned);
     }else{
         unsigned strLen = *(unsigned *)start;
-        start += strLen+sizeof(RID)+sizeof(unsigned);
+        start += strLen+sizeof(RID)+2*sizeof(unsigned);
     }
 
-    memcpy(newn,start,spaceToBeSplit-(start-data));
+    memcpy(newn,start-sizeof(unsigned),sizeof(unsigned));
+    memcpy(newn+sizeof(unsigned),start,spaceToBeSplit-(start-data));
     *(unsigned *)(newn+PAGE_SIZE-sizeof(unsigned)) = spaceToBeSplit-(start-data); //Set free space indicator for N2
     *(unsigned *)(newn+PAGE_SIZE-2*sizeof(unsigned)) = 0;
     //After deletion there would be unused page, a linked list for these unused page remains to be implemented.
     int rc = ixFileHandle.appendPage(newn);
+    //cout<<"Append N2 return "<<rc<<endl;
     if(rc != 0)
         return -1;
 
     //Get new child entry
     unsigned newLen;
-    resolveNewChildEntry(cur,newChildEntry,attribute,newLen);
+    rc = resolveNewChildEntry(cur,newChildEntry,attribute,newLen);
     newChildEntry.pageNum = ixFileHandle.getNumberOfPages()-1;
 
     //Reset unused space to 0.Note that we should avoid reset the last 2 unsigned.
@@ -569,20 +573,20 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     
     //Search for 'the middle point'
     char *cur = data;
-    unsigned spaceLeft = 0;
-    while(spaceLeft < spaceToBeSplit/2.0){
+    unsigned dataLen = 0;
+    while(cur+dataLen-data < spaceToBeSplit/2.0){
+    	cur += dataLen;
         if(attribute.type == AttrType::TypeInt){
-        	spaceLeft += sizeof(int)+sizeof(RID);
+        	dataLen = sizeof(int)+sizeof(RID);
         }
         else if(attribute.type == AttrType::TypeReal){
-        	spaceLeft += sizeof(float)+sizeof(RID);
+        	dataLen = sizeof(float)+sizeof(RID);
         }else{
             unsigned strLen = *(unsigned *)(cur);
-            spaceLeft += strLen+sizeof(RID)+sizeof(unsigned);
+            dataLen = strLen+sizeof(RID)+sizeof(unsigned);
         }
     }
-    cur += spaceLeft;
-    cout<<"insertOffset:"<<insertOffset<<" spaceToBeSplit:"<<spaceToBeSplit<<" half page offset:"<<spaceLeft<<endl;
+    cout<<"insertOffset:"<<insertOffset<<" spaceToBeSplit:"<<spaceToBeSplit<<" half page offset:"<<cur-data<<endl;
 
     //create a new leaf node called L2
     memcpy(newn,cur,spaceToBeSplit-(cur-data));
@@ -594,6 +598,7 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     *(int *)(newn+PAGE_SIZE-3*sizeof(unsigned)) = rightSib;
     //After deletion there would be unused page, a linked list for these unused page remains to be implemented.
     int rc = ixFileHandle.appendPage(newn);
+    //cout<<"Append L2 return "<<rc<<endl;
     if(rc != 0)
         return -1;
 
@@ -603,16 +608,21 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     newChildEntry.pageNum = ixFileHandle.getNumberOfPages()-1;
 
     //Change the sibling pointer of the leaf node that N originally points to.
+    cout<<"Right sibling page number:"<<rightSib<<endl;
     if(rightSib != -1){
     	char r[PAGE_SIZE];
 		rc = ixFileHandle.readPage(rightSib, r);
+		//cout<<"Read right sibling return "<<rc<<endl;
 		if(rc != 0)
 			return -1;
 		*(unsigned *)(r+PAGE_SIZE-4*sizeof(unsigned)) = ixFileHandle.getNumberOfPages()-1;
 		rc = ixFileHandle.writePage(rightSib, r);
+		//cout<<"Modify right sibling return "<<rc<<endl;
 		if(rc != 0)
 			return -1;
+
     }
+    //cout<<"End of modifying right sibling."<<endl;
 
     //Reset unused space to 0.Note that we should avoid reset the last 2 unsigned.
     //memset(page,0,PAGE_SIZE-(page-leaf)-2*sizeof(unsigned));
@@ -626,12 +636,13 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
      * If we are splitting the first page of an index file(which is root page as well as data entry page),
      * we should create the first index root page manually because no backtrace happens.
     */
+    //cout<<"Current root page number:"<<ixFileHandle.rootPage<<" current data entry page:"<<pageNumber<<endl;
     if(ixFileHandle.rootPage == pageNumber){
     	rc = createNewRoot(ixFileHandle, newChildEntry, attribute, pageNumber, newChildEntry.pageNum);
     	if(rc != 0)
     	    return -1;
     	ixFileHandle.rootPage = newChildEntry.pageNum;
-    	cout<<"Root page number:"<<ixFileHandle.rootPage<<endl;
+    	//cout<<"Root page number:"<<ixFileHandle.rootPage<<endl;
     }
 
     return 0;  
@@ -652,6 +663,7 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
     dataEntry keyEntry;
     unsigned ckLen;
     transformKeyRIDPair(attribute,keyEntry,key,rid,ckLen);
+    //cout<<rid.pageNum<<"th data entry length(when insertion):"<<ckLen<<endl;
 
     unsigned freeSpaceOffset = *(unsigned *)(page+PAGE_SIZE-sizeof(unsigned));
     bool isLeaf = *(unsigned *)(page+PAGE_SIZE-2*sizeof(unsigned));
@@ -678,6 +690,7 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
         	//if(rid.pageNum % 50 == 0)
         	cout<<"Current rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
             rc = splitDataEntry(ixFileHandle,newChildEntry,attribute,offset,page,composite,ckLen,pageNumber);
+            //cout<<"split data entry return "<<rc<<endl;
             if(rc != 0)
                 return -1;
         }
@@ -721,13 +734,18 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
                 *(unsigned *)(page+PAGE_SIZE-sizeof(unsigned)) += iLen; //Change free space indicator
                 newChildEntry.valid = false; //Set newChildEntry to be NULL
             }else{ //Since no enough space,split index node
+            	cout<<"Current index page number:"<<pageNumber<<endl;
                 rc = splitIndexEntry(ixFileHandle,newChildEntry,attribute,offset,page,bin,iLen,pageNumber);
+                //cout<<"Split index page return "<<rc<<endl;
                 if(rc != 0)
                     return -1;
                 //If this page is root node,then create a new root node
+                //cout<<"Root page number:"<<ixFileHandle.rootPage<<endl;
                 if(pageNumber == ixFileHandle.rootPage){
                     unsigned curRoot;
+                    //cout<<"Creating new root..."<<endl;
                     rc = createNewRoot(ixFileHandle,newChildEntry,attribute,pageNumber,curRoot);
+                    //cout<<"New root page number:"<<curRoot<<endl;
                     if(rc != 0)
                         return -1;
                     ixFileHandle.rootPage = curRoot;
@@ -895,6 +913,7 @@ RC IndexManager::scan(IXFileHandle &ixFileHandle,
 }
 
 void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
+	//cerr<<"printBtree..."<<" from "<<ixFileHandle.rootPage<<endl;
 	printNode(ixFileHandle,attribute,ixFileHandle.rootPage,0);
 	return;
 }
@@ -927,6 +946,7 @@ void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attrib
 	printTab(level);
 	cout<<"{\"keys\":[";
 	if(isLeaf){
+		//cerr<<"Print in leaf page "<<pageNumber<<endl;
 		map<string,vector<string> > dn;
 		while(cur-node < freeSpaceOffset){
 			dataEntry dEntry;
@@ -954,7 +974,11 @@ void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attrib
 		cout<<"]}";
 		return;
 	}else{
+		//cerr<<"Print in index page "<<pageNumber<<endl;
 		vector<unsigned> pointers;
+
+		pointers.push_back(*(unsigned *)cur);
+		cur += sizeof(unsigned);
 		while(cur-node < freeSpaceOffset){
 			indexEntry iEntry;
 			unsigned iLen;
@@ -968,6 +992,7 @@ void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attrib
 			}else{
 				cout<<"\""<<iEntry.key<<"\"";
 			}
+			//cerr<<"Print key with length of "<<iLen<<endl;
 			cur += iLen;
 			if(cur-node < freeSpaceOffset){
 				cout<<",";
@@ -981,7 +1006,9 @@ void IndexManager::printNode(IXFileHandle &ixFileHandle, const Attribute &attrib
 			if(i != pointers.size()-1)
 				cout<<","<<endl;
 		}
-		cout<<endl<<"]}";
+		cout<<endl;
+		printTab(level);
+		cout<<"]}";
 	}
 }
 
@@ -1012,6 +1039,7 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     	 * (the one without the second page number parameter) is deleted for simplification.
     	 */
         rc = IndexManager::instance().searchIndexTree(*ixFileHandle,ixFileHandle->rootPage,attribute,lowKeyInclusive,lowKeyEntry, currPage);
+        cout<<"Page number of data entry page to begin scan:"<<currPage<<endl;
         if(rc != 0) {
             return rc;
         }
@@ -1023,6 +1051,7 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
         return rc;
     }
     rc = IndexManager::instance().searchEntry(*ixFileHandle, attribute, lowKeyEntry, lowKeyInclusive, page, currOffset);
+    cout<<"Include low key?"<<lowKeyInclusive<<" start from(offset):"<<currOffset<<endl;
     if(rc != 0) {
         return rc;
     }
@@ -1160,19 +1189,20 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
     // (it's a loop because theoretically there might be empty an empty page in the middle)
     while(currOffset >= currentFreeSpaceOffset) {
         int nextPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
+        //cout<<"Next data entry page:"<<nextPage<<endl;
         if(nextPage == -1) {
         	scanning = false;
             return IX_EOF;
         }
+
         //There is next page
-        rc = ixFileHandle->readPage(currPage,page);
+        rc = ixFileHandle->readPage(nextPage,page);
         if(rc != 0) {
             return rc;
         }
-        currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-
         currPage = nextPage;
         currOffset = 0;
+        currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
         //isNewPage = true;
         lastReadFreeSpaceOffset = currentFreeSpaceOffset;
     }

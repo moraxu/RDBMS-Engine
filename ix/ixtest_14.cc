@@ -43,6 +43,7 @@ int testCase_14(const std::string &indexFileName,
     for (; i <= numOfTuples; i++) {
         // Prepare a key
         prepareKeyAndRid(count, i, key, rid);
+        cout<<i<<"th data entry length:"<<count+3*sizeof(unsigned)<<endl;
 
         rc = indexManager.insertEntry(ixFileHandle, attribute, &key, rid);
         assert(rc == success && "indexManager::insertEntry() should not fail.");
@@ -50,6 +51,7 @@ int testCase_14(const std::string &indexFileName,
         if (i == 5) {
             // print BTree, by this time the BTree should have 2 level - one root (c*) with two leaf nodes (a*b*, c*d*e*)
             std::cerr << std::endl;
+            //cout<<"printBtree is disabled. "<<endl;
             indexManager.printBtree(ixFileHandle, attribute);
             std::cerr << std::endl;
         }
@@ -58,6 +60,7 @@ int testCase_14(const std::string &indexFileName,
 
     // print BTree, by this time the BTree should have 3 level
     std::cerr << std::endl << std::endl << "////////////////////////////" << std::endl << std::endl;
+    //cout<<"printBtree is disabled. "<<endl;
     indexManager.printBtree(ixFileHandle, attribute);
     std::cerr << std::endl;
 
