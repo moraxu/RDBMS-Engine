@@ -873,13 +873,17 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     dataEntry dataEnt;
     unsigned dummyLength; //not needed
     if(transformKeyRIDPair(attribute, dataEnt, key, rid, dummyLength) != 0) {
+        cout << "RC != 0 from transformKeyRIDPair\n";
         return -1;
     }
+    cout << "Successful return from transformKeyRIDPair\n";
 
     if(deleteEntryHelper(ixFileHandle, ixFileHandle.rootPage, attribute, dataEnt, true) != -1) {
+        cout << "Successful return from deleteEntryHelper\n";
         return 0;
     }
 
+    cout << "RC == -1 from deleteEntryHelper\n";
     return -1;
 }
 
@@ -887,6 +891,7 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
     char page[PAGE_SIZE];
     RC rc = ixFileHandle.readPage(pageNumber,page);
     if(rc != 0) {
+        cout <<"\tdeleteEntryHelper: 1) Page wasn't read succesffuly\n";
         return -1;
     }
     const unsigned freeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
@@ -900,6 +905,7 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
     if(*reinterpret_cast<unsigned*>(page+PAGE_SIZE-2*sizeof(unsigned)) == 1) {
         rc = IndexManager::instance().searchEntry(ixFileHandle, attribute, dataEnt, page, offset);
         if(rc != 0 || offset >= freeSpaceOffset) {  //key not found
+            cout <<"\tdeleteEntryHelper: 2) Key not found, returning -1\n";
             return -1;
         }
 
@@ -908,7 +914,8 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
         IndexManager::instance().resolveCompositeKey(page+offset, attribute, readDataEntry, readDataEntryLength);
 
         if(dataEnt != readDataEntry) {
-            return -1;  //key not found
+            cout <<"\tdeleteEntryHelper: Some kind of internal error\n";
+            return -1;  //not even sure if it's possible, but..
         }
         else if(freeSpaceOffset == readDataEntryLength) { //found data entry is the only one on page, we have to free the page:
             //we have to update freeSpaceOffset anyway, for the sake of getNextEntry method
@@ -917,21 +924,25 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
             int leftSiblingPageNo = *reinterpret_cast<int*>(page+PAGE_SIZE-4*sizeof(int));
             rc = ixFileHandle.writePage(pageNumber,page);
             if(rc != 0) {
+                cout <<"\tdeleteEntryHelper: 3) Page wasn't written succesffuly\n";
                 return -1;
             }
 
             if(leftSiblingPageNo != -1) {
                 rc = ixFileHandle.readPage(leftSiblingPageNo,page);
                 if(rc != 0) {
+                    cout <<"\tdeleteEntryHelper: 4) Page wasn't read succesffuly\n";
                     return -1;
                 }
                 *reinterpret_cast<int*>(page+PAGE_SIZE-3*sizeof(int)) = rightSiblingPageNo;
                 rc = ixFileHandle.writePage(leftSiblingPageNo,page);
                 if(rc != 0) {
+                    cout <<"\tdeleteEntryHelper: 5) Page wasn't written succesffuly\n";
                     return -1;
                 }
             }
             //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
+            cout <<"\tdeleteEntryHelper: 6) Returning -2\n";
             return -2;
         }
         else {  //leaf page contains more than one data entry
@@ -939,8 +950,10 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
             *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= readDataEntryLength;
             rc = ixFileHandle.writePage(pageNumber,page);
             if(rc != 0) {
+                cout <<"\tdeleteEntryHelper: 7) Page wasn't written succesffuly\n";
                 return -1;
             }
+            cout <<"\tdeleteEntryHelper: 8) Returning 0\n";
             return 0;
         }
     }
@@ -949,14 +962,17 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
         indexEntry indexEnt(dataEnt);
         rc = searchEntry(ixFileHandle, attribute, indexEnt, page, offset);
         if(rc != 0) {
+            cout <<"\tdeleteEntryHelper: Rather impossible if statement\n";
             return -1;
         }
 
         rc = deleteEntryHelper(ixFileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, false);
         if(rc == 0 || rc == -1) { //no deletion took place below this node/page below this node had more than one entry when the deletion took place (rc==0) OR key not found (rc==-1)
+            cout <<"\tdeleteEntryHelper: 9) Returning rc = " << rc << " from non-leaf page level\n";
             return rc;
         }
         else if(rc == -2) { //key was deleted from leaf page below this level and the leaf page became empty
+            cout <<"\tdeleteEntryHelper: 10) Having read -2 on non-leaf page level..\n";
             unsigned lengthOfIndexEnt = indexEnt.actualLength(attribute);
             //if the length of the index entry + unpaired page pointer == freeSpaceOffset, this page contains only one index entry
             if(lengthOfIndexEnt + sizeof(unsigned) == freeSpaceOffset) {
@@ -973,12 +989,14 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                     //the other of this marked-for-deletion page's child. Thus, only one leaf page remains and it happens to be the new root.
                     ixFileHandle.rootPage = otherChildPageNo;
                     //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
+                    cout <<"\tdeleteEntryHelper: 11) Returning 0 (root case)\n";
                     return 0;
                 }
                 else {
                     //If this parent (non-leaf) node is not a root node, then it is also marked for deletion
                     //and it returns a page number of its other child.
                     //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
+                    cout <<"\tdeleteEntryHelper: 12) Returning otherChildPageNo= " << otherChildPageNo <<" (non-root case)\n";
                     return otherChildPageNo;
                 }
             }
@@ -988,8 +1006,10 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                 *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= lengthOfIndexEnt;
                 rc = ixFileHandle.writePage(pageNumber,page);
                 if(rc != 0) {
+                    cout <<"\tdeleteEntryHelper: 13) Page wasn't written succesffuly\n";
                     return -1;
                 }
+                cout <<"\tdeleteEntryHelper: 14) Returning 0 - not last index entry case\n";
                 return 0;
             }
         }
@@ -998,8 +1018,10 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
             *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)) = rc;
             rc = ixFileHandle.writePage(pageNumber,page);
             if(rc != 0) {
+                cout <<"\tdeleteEntryHelper: 15) Page wasn't written succesffuly\n";
                 return -1;
             }
+            cout <<"\tdeleteEntryHelper: 16) Returning 0 - having read page number to replace the current one\n";
             return 0;
         }
     }
