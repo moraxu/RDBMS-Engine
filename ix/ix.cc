@@ -870,7 +870,139 @@ RC IndexManager::searchIndexTree(IXFileHandle& fileHandle, const unsigned pageNu
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
+    dataEntry dataEnt;
+    unsigned dummyLength; //not needed
+    if(transformKeyRIDPair(attribute, dataEnt, key, rid, dummyLength) != 0) {
+        return -1;
+    }
+
+    if(deleteEntryHelper(ixFileHandle, ixFileHandle.rootPage, attribute, dataEnt, true) != -1) {
+        return 0;
+    }
+
     return -1;
+}
+
+RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pageNumber, const Attribute &attribute, const dataEntry& dataEnt, bool amIRoot) {
+    char page[PAGE_SIZE];
+    RC rc = ixFileHandle.readPage(pageNumber,page);
+    if(rc != 0) {
+        return -1;
+    }
+    const unsigned freeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
+    unsigned offset;
+
+    //If page is a leaf, delete the data entry, if found
+    //Return codes:
+    //key not found/internal error: -1
+    //key found and deleted without freeing the page: 0
+    //key found and deleted at the same time freeing the page: -2
+    if(*reinterpret_cast<unsigned*>(page+PAGE_SIZE-2*sizeof(unsigned)) == 1) {
+        rc = IndexManager::instance().searchEntry(ixFileHandle, attribute, dataEnt, page, offset);
+        if(rc != 0 || offset >= freeSpaceOffset) {  //key not found
+            return -1;
+        }
+
+        dataEntry readDataEntry;
+        unsigned readDataEntryLength;
+        IndexManager::instance().resolveCompositeKey(page+offset, attribute, readDataEntry, readDataEntryLength);
+
+        if(dataEnt != readDataEntry) {
+            return -1;  //key not found
+        }
+        else if(freeSpaceOffset == readDataEntryLength) { //found data entry is the only one on page, we have to free the page:
+            //we have to update freeSpaceOffset anyway, for the sake of getNextEntry method
+            *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= readDataEntryLength;
+            int rightSiblingPageNo = *reinterpret_cast<int*>(page+PAGE_SIZE-3*sizeof(int));
+            int leftSiblingPageNo = *reinterpret_cast<int*>(page+PAGE_SIZE-4*sizeof(int));
+            rc = ixFileHandle.writePage(pageNumber,page);
+            if(rc != 0) {
+                return -1;
+            }
+
+            if(leftSiblingPageNo != -1) {
+                rc = ixFileHandle.readPage(leftSiblingPageNo,page);
+                if(rc != 0) {
+                    return -1;
+                }
+                *reinterpret_cast<int*>(page+PAGE_SIZE-3*sizeof(int)) = rightSiblingPageNo;
+                rc = ixFileHandle.writePage(leftSiblingPageNo,page);
+                if(rc != 0) {
+                    return -1;
+                }
+            }
+            //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
+            return -2;
+        }
+        else {  //leaf page contains more than one data entry
+            memmove(page+offset, page+offset+readDataEntryLength, freeSpaceOffset-(offset+readDataEntryLength));
+            *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= readDataEntryLength;
+            rc = ixFileHandle.writePage(pageNumber,page);
+            if(rc != 0) {
+                return -1;
+            }
+            return 0;
+        }
+    }
+    //Non-leaf page - keep searching for leaf page and then handle situation accordingly
+    else {
+        indexEntry indexEnt(dataEnt);
+        rc = searchEntry(ixFileHandle, attribute, indexEnt, page, offset);
+        if(rc != 0) {
+            return -1;
+        }
+
+        rc = deleteEntryHelper(ixFileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, false);
+        if(rc == 0 || rc == -1) { //no deletion took place below this node/page below this node had more than one entry when the deletion took place (rc==0) OR key not found (rc==-1)
+            return rc;
+        }
+        else if(rc == -2) { //key was deleted from leaf page below this level and the leaf page became empty
+            unsigned lengthOfIndexEnt = indexEnt.actualLength(attribute);
+            //if the length of the index entry + unpaired page pointer == freeSpaceOffset, this page contains only one index entry
+            if(lengthOfIndexEnt + sizeof(unsigned) == freeSpaceOffset) {
+                unsigned otherChildPageNo;
+                if(offset == freeSpaceOffset) {
+                    otherChildPageNo = *reinterpret_cast<unsigned*>(page);
+                }
+                else {
+                    otherChildPageNo = *reinterpret_cast<unsigned*>(freeSpaceOffset-sizeof(unsigned));
+                }
+
+                if(amIRoot) {
+                    //If this parent (non-leaf) node is a root node, then just mark this page as free as well and let the root pointer point to
+                    //the other of this marked-for-deletion page's child. Thus, only one leaf page remains and it happens to be the new root.
+                    ixFileHandle.rootPage = otherChildPageNo;
+                    //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
+                    return 0;
+                }
+                else {
+                    //If this parent (non-leaf) node is not a root node, then it is also marked for deletion
+                    //and it returns a page number of its other child.
+                    //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
+                    return otherChildPageNo;
+                }
+            }
+            else { //not last index entry: shift entries, update freeSpaceOffset and return 0
+                                                      //lengthOfIndexEnt already includes sizeof(unsigned) so we have to subtract it
+                memmove(page+offset-sizeof(unsigned), page+offset-sizeof(unsigned)+lengthOfIndexEnt, freeSpaceOffset-(offset-sizeof(unsigned)+lengthOfIndexEnt));
+                *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= lengthOfIndexEnt;
+                rc = ixFileHandle.writePage(pageNumber,page);
+                if(rc != 0) {
+                    return -1;
+                }
+                return 0;
+            }
+        }
+        else { //non-leaf page below this level contained only one index entry, which was deleted,
+               //and that page "returned" one of its child's page number that will replace the previous page number in THIS node
+            *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)) = rc;
+            rc = ixFileHandle.writePage(pageNumber,page);
+            if(rc != 0) {
+                return -1;
+            }
+            return 0;
+        }
+    }
 }
 
 RC IndexManager::scan(IXFileHandle &ixFileHandle,
@@ -1186,7 +1318,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
 	}
 
     //If it's time to skip to the next page, if any
-    // (it's a loop because theoretically there might be empty an empty page in the middle)
+    // (it's a loop because theoretically there might be an empty page in the middle)
     while(currOffset >= currentFreeSpaceOffset) {
         int nextPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
         //cout<<"Next data entry page:"<<nextPage<<endl;

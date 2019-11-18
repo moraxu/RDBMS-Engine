@@ -17,6 +17,21 @@ struct dataEntry
     int ival;
     float fval;
     RID rid;
+
+    dataEntry(){
+        ival = -1;
+        fval = -1;
+        rid.pageNum = 0;
+        rid.slotNum = 0;
+    }
+
+    bool operator!=(const dataEntry& dataEnt) const {
+        return key == dataEnt.key
+                && ival == dataEnt.ival
+                && fval == dataEnt.fval
+                && rid.slotNum == dataEnt.rid.slotNum
+                && rid.pageNum == dataEnt.rid.pageNum;
+    }
 };
 
 struct indexEntry
@@ -44,6 +59,22 @@ struct indexEntry
         rid = d.rid;
         pageNum = 0;
         valid = true;
+    }
+
+    unsigned actualLength(const Attribute& attribute) const {
+        unsigned result = 0;
+        if(attribute.type == AttrType::TypeInt) {
+            result += sizeof(ival);
+        }
+        else if(attribute.type == AttrType::TypeReal) {
+            result += sizeof(fval);
+        }
+        else {
+            result += (key.length() + sizeof(unsigned));
+        }
+        result += sizeof(pageNum);
+        result += sizeof(rid);
+        return result;
     }
 };
 
@@ -227,6 +258,8 @@ protected:
     IndexManager &operator=(const IndexManager &) = default;                    // Prevent assignment
 
 private:
+    RC deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pageNumber, const Attribute &attribute, const dataEntry& dataEnt, bool amIRoot);
+
     RC transformKeyRIDPair(const Attribute &attribute,dataEntry &de,const void *key,const RID rid,unsigned &keyLen);
     
     RC resolveNewChildEntry(char *bin,indexEntry &newChildEntry,const Attribute attribute,unsigned &iLen) const;
