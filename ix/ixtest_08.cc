@@ -52,7 +52,6 @@ int testCase_8(const std::string &indexFileName, const Attribute &attribute) {
 
         inRidSlotNumSum += rid.slotNum;
     }
-    //inRidSlotNumSum -= 7001*3;
 
     // Scan
     rc = indexManager.scan(ixFileHandle, attribute, &value, NULL, true, true, ix_ScanIterator);
@@ -66,9 +65,8 @@ int testCase_8(const std::string &indexFileName, const Attribute &attribute) {
         if (rid.pageNum % 100 == 0) {
             std::cerr << count << " - Returned rid: " << rid.pageNum << " " << rid.slotNum << std::endl;
         }
-        if (rid.pageNum <= value || rid.slotNum <= value * 3) {
-        	//cout<<"value:"<<value<<" rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
-        	std::cerr << "Wrong entries output... The test failed" << std::endl;
+        if (rid.pageNum < value || rid.slotNum < value * 3) {
+            std::cerr << "Wrong entries output... The test failed" << std::endl;
             rc = ix_ScanIterator.close();
             rc = indexManager.closeFile(ixFileHandle);
             rc = indexManager.destroyFile(indexFileName);
@@ -78,7 +76,6 @@ int testCase_8(const std::string &indexFileName, const Attribute &attribute) {
     }
 
     // Inconsistency check
-    //cout<<"inRidSlotNumSum:"<<inRidSlotNumSum<<" outRidSlotNumSum:"<<outRidSlotNumSum<<endl;
     if (inRidSlotNumSum != outRidSlotNumSum) {
         std::cerr << "Wrong entries output... The test failed" << std::endl;
         rc = ix_ScanIterator.close();
