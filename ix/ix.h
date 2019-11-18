@@ -26,11 +26,11 @@ struct dataEntry
     }
 
     bool operator!=(const dataEntry& dataEnt) const {
-        return key == dataEnt.key
+        return !(key == dataEnt.key
                 && ival == dataEnt.ival
                 && fval == dataEnt.fval
                 && rid.slotNum == dataEnt.rid.slotNum
-                && rid.pageNum == dataEnt.rid.pageNum;
+                && rid.pageNum == dataEnt.rid.pageNum);
     }
 };
 

@@ -989,14 +989,14 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                     //the other of this marked-for-deletion page's child. Thus, only one leaf page remains and it happens to be the new root.
                     ixFileHandle.rootPage = otherChildPageNo;
                     //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
-                    cout <<"\tdeleteEntryHelper: 11) Returning 0 (root case)\n";
+                    cout <<"\tdeleteEntryHelper: 11) ..Returning 0 (root case)\n";
                     return 0;
                 }
                 else {
                     //If this parent (non-leaf) node is not a root node, then it is also marked for deletion
                     //and it returns a page number of its other child.
                     //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
-                    cout <<"\tdeleteEntryHelper: 12) Returning otherChildPageNo= " << otherChildPageNo <<" (non-root case)\n";
+                    cout <<"\tdeleteEntryHelper: 12) ..Returning otherChildPageNo= " << otherChildPageNo <<" (non-root case)\n";
                     return otherChildPageNo;
                 }
             }
@@ -1006,10 +1006,10 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                 *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= lengthOfIndexEnt;
                 rc = ixFileHandle.writePage(pageNumber,page);
                 if(rc != 0) {
-                    cout <<"\tdeleteEntryHelper: 13) Page wasn't written succesffuly\n";
+                    cout <<"\tdeleteEntryHelper: 13) ..Page wasn't written succesffuly\n";
                     return -1;
                 }
-                cout <<"\tdeleteEntryHelper: 14) Returning 0 - not last index entry case\n";
+                cout <<"\tdeleteEntryHelper: 14) ..Returning 0 - not last index entry case\n";
                 return 0;
             }
         }
