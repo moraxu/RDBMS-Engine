@@ -342,6 +342,7 @@ RC IndexManager::searchEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
 RC IndexManager::searchEntry(IXFileHandle &ixFileHandle, const Attribute &attribute,
 		const indexEntry &target,char *page,unsigned &offset){
     unsigned freeSpaceOffset = *(unsigned *)(page+PAGE_SIZE-sizeof(unsigned));
+    cout<<"Free space offset when searching this index page:"<<freeSpaceOffset<<endl;
 
     //Skip the first node pointer
     char *cur = page+sizeof(unsigned);
@@ -398,6 +399,7 @@ RC IndexManager::searchEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     }
     //Eventually the place where the first data entry >= target entry is found.
     offset = cur-page;
+    cout<<"Eventually offset "<<offset<<" is found."<<endl;
 
     return 0;
 }
@@ -499,6 +501,7 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
     char newn[PAGE_SIZE];
     unsigned freeSpaceOffset = *(unsigned *)(index+PAGE_SIZE-sizeof(unsigned));
     unsigned spaceToBeSplit = freeSpaceOffset+iLen;
+    cout<<"Free space offset in the index page:"<<freeSpaceOffset<<" insertOffset:"<<insertOffset<<" entry length:"<<iLen<<endl;
     memcpy(data,index,insertOffset);
     memcpy(data+insertOffset,bin,iLen);
     memcpy(data+insertOffset+iLen,index+insertOffset,freeSpaceOffset-insertOffset);
@@ -533,9 +536,8 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
         start += strLen+sizeof(RID)+2*sizeof(unsigned);
     }
 
-    memcpy(newn,start-sizeof(unsigned),sizeof(unsigned));
-    memcpy(newn+sizeof(unsigned),start,spaceToBeSplit-(start-data));
-    *(unsigned *)(newn+PAGE_SIZE-sizeof(unsigned)) = spaceToBeSplit-(start-data); //Set free space indicator for N2
+    memcpy(newn,start-sizeof(unsigned),spaceToBeSplit-(start-data)+sizeof(unsigned));
+    *(unsigned *)(newn+PAGE_SIZE-sizeof(unsigned)) = spaceToBeSplit-(start-data)+sizeof(unsigned); //Set free space indicator for N2
     *(unsigned *)(newn+PAGE_SIZE-2*sizeof(unsigned)) = 0;
     //After deletion there would be unused page, a linked list for these unused page remains to be implemented.
     int rc = ixFileHandle.appendPage(newn);
@@ -608,7 +610,7 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     newChildEntry.pageNum = ixFileHandle.getNumberOfPages()-1;
 
     //Change the sibling pointer of the leaf node that N originally points to.
-    cout<<"Right sibling page number:"<<rightSib<<endl;
+    //cout<<"Right sibling page number:"<<rightSib<<endl;
     if(rightSib != -1){
     	char r[PAGE_SIZE];
 		rc = ixFileHandle.readPage(rightSib, r);
@@ -688,7 +690,7 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
             //newChildEntry.valid = false;
         }else{
         	//if(rid.pageNum % 50 == 0)
-        	cout<<"Current rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
+        	//cout<<"Current rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
             rc = splitDataEntry(ixFileHandle,newChildEntry,attribute,offset,page,composite,ckLen,pageNumber);
             //cout<<"split data entry return "<<rc<<endl;
             if(rc != 0)
@@ -702,7 +704,7 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
         if(rc != 0)
             return -1;
         
-        cout<<"Page number for the next level:"<<*(unsigned *)(page+offset-sizeof(unsigned))<<endl;
+        //cout<<"Page number for the next level:"<<*(unsigned *)(page+offset-sizeof(unsigned))<<endl;
         rc = backtraceInsert(ixFileHandle,*(unsigned *)(page+offset-sizeof(unsigned)),attribute,key,rid,newChildEntry);
         //Backtrace: If there is no split in the lower level,i.e. newChildEntry == NULL,return.
         if(rc != 0)
@@ -834,39 +836,6 @@ RC IndexManager::searchIndexTree(IXFileHandle& fileHandle, const unsigned pageNu
      * so that our search process always ends at an index entry with bigger key value.
      * */
     return searchIndexTree(fileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, lowKeyInclusive, dataEnt, leafPageNo);
-
-    /*
-    if(offset == *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned))) {
-        return searchIndexTree(fileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, leafPageNo);
-    }
-
-    unsigned iLen;
-    indexEntry nextEnt;
-    resolveNewChildEntry(page+offset, nextEnt, attribute, iLen);
-    if(attribute.type == AttrType::TypeInt) {
-        if(dataEnt.ival < nextEnt.ival) {
-            return searchIndexTree(fileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, leafPageNo);
-        }
-        else {
-            return searchIndexTree(fileHandle, nextEnt.pageNum, attribute, dataEnt, leafPageNo);
-        }
-    }
-    else if(attribute.type == AttrType::TypeReal) {
-        if(dataEnt.fval < nextEnt.fval) {
-            return searchIndexTree(fileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, leafPageNo);
-        }
-        else {
-            return searchIndexTree(fileHandle, nextEnt.pageNum, attribute, dataEnt, leafPageNo);
-        }
-    }
-    else {
-        if(dataEnt.key < nextEnt.key) {
-            return searchIndexTree(fileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, leafPageNo);
-        }
-        else {
-            return searchIndexTree(fileHandle, nextEnt.pageNum, attribute, dataEnt, leafPageNo);
-        }
-    }*/
 }
 
 RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
@@ -1205,7 +1174,6 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
         return rc;
     }
     rc = IndexManager::instance().searchEntry(*ixFileHandle, attribute, lowKeyEntry, lowKeyInclusive, page, currOffset);
-    cout<<"Include low key?"<<lowKeyInclusive<<" start from(offset):"<<currOffset<<endl;
     if(rc != 0) {
         return rc;
     }
@@ -1214,50 +1182,6 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     lastReadFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
     lastReadDataEntryLength = 0;
     return 0;
-    /*if(currOffset == *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned))) {
-        return 0;
-    }
-
-    dataEntry readDataEntry;
-    unsigned readDataEntryLen;
-    IndexManager::instance().resolveCompositeKey(page+currOffset, attribute, readDataEntry, readDataEntryLen);
-    if(attribute.type == AttrType::TypeInt) {
-        if(lowKeyEntry.ival < readDataEntry.ival || (lowKeyEntry.ival == readDataEntry.ival && lowKeyInclusive)) {
-            //we start from current page and offset; those values are already stored in currPage and currOffset fields
-            return 0;
-        }
-        else if(lowKeyEntry.ival == readDataEntry.ival && !lowKeyInclusive){
-            //we start from next offset
-            //(if it was the last data entry on the page, getNextEntry() will set
-            //"currOffset" and "currPage" to the beginning of next page, if any)
-            currOffset += readDataEntryLen;
-            return 0;
-        }
-        else {
-            //some kind of unexpected error, I am not even sure if entering this 'else' block is ever possible
-            return -1;
-        }
-    }
-    else if(attribute.type == AttrType::TypeReal) {
-        if(lowKeyEntry.fval < readDataEntry.fval || (lowKeyEntry.fval == readDataEntry.fval && lowKeyInclusive))
-            return 0;
-        else if(lowKeyEntry.fval == readDataEntry.fval && !lowKeyInclusive){
-            currOffset += readDataEntryLen;
-            return 0;
-        }
-        else
-            return -1;
-    }
-    else {
-        if(lowKeyEntry.key < readDataEntry.key || (lowKeyEntry.key == readDataEntry.key && lowKeyInclusive))
-            return 0;
-        else if(lowKeyEntry.key == readDataEntry.key && !lowKeyInclusive){
-            currOffset += readDataEntryLen;
-            return 0;
-        }
-        else
-            return -1;
-    }*/
 }
 
 void IX_ScanIterator::transformDataEntryKey(dataEntry dataEnt, void* key) const {
@@ -1286,7 +1210,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
     /*
      * During the very first scan operation we need to find the corresponding page and offset
      * of the first qualifying data entry.
-     * If scanStarted is used,it should be set to false
+     * If scanning is used,it should be set to false
      * every time this function retrieves the last data entry that satisfies the condition.
      */
     if(!scanning) {
@@ -1357,23 +1281,8 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
         currPage = nextPage;
         currOffset = 0;
         currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-        //isNewPage = true;
         lastReadFreeSpaceOffset = currentFreeSpaceOffset;
     }
-
-    /*
-     * If lastReadFreeSpaceOffset and lastReadDataEntryLength is not initialized,
-     * there could be undefined results.
-     */
-    /*if(!isNewPage) {
-        if(currentFreeSpaceOffset < lastReadFreeSpaceOffset) {
-            currOffset -= lastReadDataEntryLength;
-        }
-    }
-    else {
-    	isNewPage = false;
-        lastReadFreeSpaceOffset = currentFreeSpaceOffset;
-    }*/
 
     dataEntry readDataEntry;
     IndexManager::instance().resolveCompositeKey(page+currOffset, attribute, readDataEntry, lastReadDataEntryLength);
@@ -1485,14 +1394,6 @@ void IX_ScanIterator::setScanning(bool scanning) {
 	this->scanning = scanning;
 }
 
-bool IX_ScanIterator::isIsNewPage() const {
-    return isNewPage;
-}
-
-void IX_ScanIterator::setIsNewPage(bool isNewPage) {
-	this->isNewPage = isNewPage;
-}
-
 IXFileHandle::IXFileHandle() {
     ixReadPageCounter = 0;
     ixWritePageCounter = 0;
@@ -1562,4 +1463,3 @@ RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePa
     appendPageCount = ixAppendPageCounter;
     return 0;
 }
-

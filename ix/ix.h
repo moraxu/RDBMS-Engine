@@ -184,10 +184,6 @@ public:
 
     void setScanning(bool scanStarted);
 
-    bool isIsNewPage() const;
-
-    void setIsNewPage(bool newPage);
-
     // Constructor
     IX_ScanIterator();
 
