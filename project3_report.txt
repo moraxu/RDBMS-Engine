@@ -48,7 +48,7 @@ In addition, we use Alternative 2 to store data entries, and still in composite 
 - Have you added your own source file (.cc or .h)?
 No. But we add many(>= 20) private functions.
 
-- Have you implemented non-lazy deletion? Choose Yes or No: 
+- Have you implemented non-lazy deletion? Choose Yes or No: Yes
 
 
 - Have you implemented duplicated key handling that can span multiple pages? Choose Yes or No: 
