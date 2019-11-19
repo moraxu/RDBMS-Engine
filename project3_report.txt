@@ -1,9 +1,9 @@
 1. Basic information
-Team number (e.g., 01) : 
-#1 Student ID : 
-#1 Student Name : 
-#2 Student ID : 
-#2 Student Name : 
+Team number (e.g., 01) : 19
+#1 Student ID : 93209704
+#1 Student Name : Yuzhou Guo
+#2 Student ID : 29249325
+#2 Student Name : Michal Guzek
 OS (bit) :
 gcc version :
 

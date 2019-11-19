@@ -1030,8 +1030,6 @@ RC IndexManager::scan(IXFileHandle &ixFileHandle,
     ix_ScanIterator.setHighKeyInclusive(highKeyInclusive);
 
     ix_ScanIterator.setScanning(false);
-    ix_ScanIterator.setIsNewPage(true); //although it doesn't practically matter at this point..
-
     return 0;
 }
 
