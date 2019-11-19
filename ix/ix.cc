@@ -24,7 +24,6 @@ RC IndexManager::createFile(const std::string &fileName) {
 
 	byte cnt[PAGE_SIZE];
 	memset(cnt,0,sizeof(cnt));
-	//cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
 	fseek(fp,0,SEEK_SET);
 	fwrite(cnt,1,PAGE_SIZE,fp);
 	//if fp is not closed,there could be undefined behaviors, e.g.  counter value undefined.
@@ -54,17 +53,15 @@ RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandl
 		return -1;
 	}
 
-	unsigned cnt[6];
+	unsigned cnt[5];
 	fseek(ixFileHandle.fp,0,SEEK_SET);
-	fread(cnt,sizeof(unsigned),6,ixFileHandle.fp);
+	fread(cnt,sizeof(unsigned),5,ixFileHandle.fp);
 	ixFileHandle.ixReadPageCounter = cnt[0];
 	ixFileHandle.ixWritePageCounter =  cnt[1];
 	ixFileHandle.ixAppendPageCounter = cnt[2];
 	ixFileHandle.noPages = cnt[3];
-	ixFileHandle.lastTableID = cnt[4];
-	ixFileHandle.rootPage = cnt[5];
+	ixFileHandle.rootPage = cnt[4];
 
-	//cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
 	return 0;
 }
 
@@ -73,14 +70,13 @@ RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
 		return -1;
 	}
 	fseek(ixFileHandle.fp, 0, SEEK_SET);
-	unsigned cnt[6];
+	unsigned cnt[5];
 	cnt[0] = ixFileHandle.ixReadPageCounter;
 	cnt[1] = ixFileHandle.ixWritePageCounter;
 	cnt[2] = ixFileHandle.ixAppendPageCounter;
 	cnt[3] = ixFileHandle.noPages;
-	cnt[4] = ixFileHandle.lastTableID;
-	cnt[5] = ixFileHandle.rootPage;
-	fwrite(cnt,sizeof(unsigned),6,ixFileHandle.fp);
+	cnt[4] = ixFileHandle.rootPage;
+	fwrite(cnt,sizeof(unsigned),5,ixFileHandle.fp);
 	//File close error!
 	if(fclose(ixFileHandle.fp) == EOF) {
 		return -1;
@@ -1372,7 +1368,6 @@ IXFileHandle::IXFileHandle() {
     ixWritePageCounter = 0;
     ixAppendPageCounter = 0;
     noPages = 0;
-    lastTableID = 0;
     rootPage = 0;
     fp = nullptr;
 }
@@ -1387,7 +1382,6 @@ RC IXFileHandle::readPage(PageNum pageNum, void *data){
 		return -1;
 	}
 
-	//NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
 	fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
 	unsigned res = fread(data,sizeof(char),PAGE_SIZE,fp);
 	//File read error!
@@ -1406,7 +1400,6 @@ RC IXFileHandle::writePage(PageNum pageNum, const void *data){
 		return -1;
 	}
 
-	//NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
 	fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
 	unsigned res = fwrite(data,sizeof(char),PAGE_SIZE,fp);
 	//File write error!

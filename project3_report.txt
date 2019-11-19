@@ -13,8 +13,7 @@ gcc version : gcc 5.4.0
 
 Based on the idea of PagedFileManager,we reserve a single hidden page in the beginning of every index file.
 Hidden page format now is designed as follows:
-    [ ixReadPageCounter || ixWritePageCounter || ixAppendPageCounter
-    || number of pages || lastTableID || root page number ]
+    [ ixReadPageCounter || ixWritePageCounter || ixAppendPageCounter || number of pages || root page number ]
 
 3. Index Entry Format
 - Show your index entry design (structure). 
@@ -22,7 +21,7 @@ Hidden page format now is designed as follows:
 A single index entry is comprised of the following field:
 [ page number ||  key value || page number || ... ||page number ]
 where a 'page number' is served as a pointer pointing to its child index/leaf page.
-For the key value part,and the format is:
+For the key value part, the format is:
     [ search key value || rid ]
 This composite key design is intended to deal with dulplicate issue so that all 'key' values now have different values.
 
@@ -49,17 +48,16 @@ In addition, we use Alternative 2 to store data entries, and still in composite 
 No. But we add many(>= 20) private functions.
 
 - Have you implemented non-lazy deletion? Choose Yes or No: 
-
+No.
 
 - Have you implemented duplicated key handling that can span multiple pages? Choose Yes or No: 
   If yes, please explain briefly how you have implemented this feature.
-It has already been decribed in 'Index Entry Format'.Here's a repetition:
-For the key value part,and the format is:
-    [ search key value || rid ]
-This composite key design is intended to deal with dulplicate issue so that all 'key' values now have different values.
+No.
 
 - Other implementation details:
-Note that in order to search through such a composite key based page, search key should first be compared with target search key. If search key < target search key OR (search key == target search key AND search RID < target RID), keep searching, else stop.
+Note that in order to search through such a composite key based page, search key (the one read from disk) should first
+be compared with target search key (the one we're concerned with).
+If search key < target search key OR (search key == target search key AND search RID < target RID), keep searching, else stop.
 
 6. Other (optional)
 - Freely use this section to tell us about things that are related to the project 3, but not related to the other sections (optional)

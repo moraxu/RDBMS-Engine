@@ -93,7 +93,6 @@ public:
     unsigned ixWritePageCounter;
     unsigned ixAppendPageCounter;
     unsigned noPages;
-    unsigned lastTableID;
     unsigned rootPage;
     FILE *fp;
 
