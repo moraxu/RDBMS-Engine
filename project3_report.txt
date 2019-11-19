@@ -4,34 +4,62 @@ Team number (e.g., 01) : 19
 #1 Student Name : Yuzhou Guo
 #2 Student ID : 29249325
 #2 Student Name : Michal Guzek
-OS (bit) :
-gcc version :
+OS (bit) : Ubuntu 16.04 64-bit
+gcc version : gcc 5.4.0
 
 
 2. Meta-data page in an index file
 - Show your meta-data page of an index design if you have any. 
 
+Based on the idea of PagedFileManager,we reserve a single hidden page in the beginning of every index file.
+Hidden page format now is designed as follows:
+    [ ixReadPageCounter || ixWritePageCounter || ixAppendPageCounter
+    || number of pages || lastTableID || root page number ]
 
 3. Index Entry Format
 - Show your index entry design (structure). 
 
+A single index entry is comprised of the following field:
+[ page number ||  key value || page number || ... ||page number ]
+where a 'page number' is served as a pointer pointing to its child index/leaf page.
+For the key value part,and the format is:
+    [ search key value || rid ]
+This composite key design is intended to deal with dulplicate issue so that all 'key' values now have different values.
 
 4. Page Format
 - Show your internal-page (non-leaf node) design.
 
+For non-leaf index page, slot directory is not used since it's not worth using slot directory to speed up the search process.
+Instead,we now have 2 fields storing information specific to current page,which is:
+--The last 0-3 bytes in a non-leaf index page are used to indicate the first unused byte,
+--The last 4-7 bytes are used to indicate whether it's a leaf page(1 for yes and 0 for no);
+
 - Show your leaf-page (leaf node) design.
 
+leaf page is designed in a similar way, but now we have 4 fields at the end of a page instead of 2:
+--The last 0-3 bytes in a non-leaf index page are used to indicate the first unused byte,
+--The last 4-7 bytes are used to indicate whether it's a leaf page,
+--The last 8-11 bytes are used to indicate the page number of its right sibling,
+--The last 12-15 bytes are used to indicate the page number of its left sibling.
+
+In addition, we use Alternative 2 to store data entries, and still in composite key style.
 
 5. Implementation Detail
 - Have you added your own source file (.cc or .h)?
+No. But we add many(>= 20) private functions.
 
 - Have you implemented non-lazy deletion? Choose Yes or No: 
 
+
 - Have you implemented duplicated key handling that can span multiple pages? Choose Yes or No: 
   If yes, please explain briefly how you have implemented this feature.
+It has already been decribed in 'Index Entry Format'.Here's a repetition:
+For the key value part,and the format is:
+    [ search key value || rid ]
+This composite key design is intended to deal with dulplicate issue so that all 'key' values now have different values.
 
 - Other implementation details:
-
+Note that in order to search through such a composite key based page, search key should first be compared with target search key. If search key < target search key OR (search key == target search key AND search RID < target RID), keep searching, else stop.
 
 6. Other (optional)
 - Freely use this section to tell us about things that are related to the project 3, but not related to the other sections (optional)

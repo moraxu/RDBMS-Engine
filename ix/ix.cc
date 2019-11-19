@@ -1331,9 +1331,6 @@ const Attribute &IX_ScanIterator::getAttribute() const {
 
 void IX_ScanIterator::setAttribute(const Attribute attribute) {
 	this->attribute = attribute;
-	//this->attribute.name = attribute.name;
-	//this->attribute.type = attribute.type;
-	//this->attribute.length = attribute.length;
 }
 
 bool IX_ScanIterator::isLowKeyInclusive() const {
@@ -1407,7 +1404,6 @@ IXFileHandle::~IXFileHandle() {
 
 RC IXFileHandle::readPage(PageNum pageNum, void *data){
 	//Intend to read a non-existing page!
-	//Fix test case 06
 	if(pageNum >= noPages){
 		ixReadPageCounter++;
 		return -1;
