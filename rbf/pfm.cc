@@ -30,7 +30,6 @@ RC PagedFileManager::createFile(const std::string &fileName) {
 
     byte cnt[PAGE_SIZE];
     memset(cnt,0,sizeof(cnt));
-    //cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
     fseek(fp,0,SEEK_SET);
     fwrite(cnt,1,PAGE_SIZE,fp);
     //if fp is not closed,there could be undefined behaviors, e.g.  counter value undefined.
@@ -68,11 +67,13 @@ RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandl
     fileHandle.appendPageCounter = cnt[2];
     fileHandle.noPages = cnt[3];
     fileHandle.lastTableID = cnt[4];
-    //cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
     return 0;
 }
 
 RC PagedFileManager::closeFile(FileHandle &fileHandle) {
+    if(fileHandle.fp == NULL) {
+        return -1;
+    }
     fseek(fileHandle.fp, 0, SEEK_SET);
     unsigned cnt[5];
     cnt[0] = fileHandle.readPageCounter;
@@ -82,8 +83,10 @@ RC PagedFileManager::closeFile(FileHandle &fileHandle) {
     cnt[4] = fileHandle.lastTableID;
     fwrite(cnt,sizeof(unsigned),5,fileHandle.fp);
     //File close error!
-    if(fclose(fileHandle.fp) == EOF)
+    if(fclose(fileHandle.fp) == EOF) {
         return -1;
+    }
+    fileHandle.fp = NULL;
     return 0;
 }
 
@@ -100,13 +103,11 @@ FileHandle::~FileHandle() = default;
 
 RC FileHandle::readPage(PageNum pageNum, void *data) {
     //Intend to read a non-existing page!
-    //Fix test case 06
     if(pageNum >= noPages){
         readPageCounter++;
         return -1;
     }
     
-    //NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
     fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
     unsigned res = fread(data,sizeof(char),PAGE_SIZE,fp);
     //File read error!
@@ -125,7 +126,6 @@ RC FileHandle::writePage(PageNum pageNum, const void *data) {
         return -1;
     }
     
-    //NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
     fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
     unsigned res = fwrite(data,sizeof(char),PAGE_SIZE,fp);
     //File write error!
