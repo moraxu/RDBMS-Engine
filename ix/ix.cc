@@ -791,7 +791,7 @@ RC IX_ScanIterator::findFirstLeafPage(IXFileHandle& fileHandle, unsigned& pageNo
     }
 
     byte page[PAGE_SIZE];
-    for(unsigned currPage = fileHandle.rootPage ; true ; currPage = *reinterpret_cast<unsigned*>(page+PAGE_SIZE-3*sizeof(unsigned))) {
+    for(unsigned currPage = fileHandle.rootPage ; true ; currPage = *reinterpret_cast<unsigned*>(page)) {
         int rc = fileHandle.readPage(currPage,page);
         if(rc != 0) {
             return -1;
