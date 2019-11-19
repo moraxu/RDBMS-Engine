@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <unistd.h>
+#include <climits>
 
 using namespace std;
 
@@ -24,6 +25,7 @@ RC IndexManager::createFile(const std::string &fileName) {
 
 	byte cnt[PAGE_SIZE];
 	memset(cnt,0,sizeof(cnt));
+	//cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
 	fseek(fp,0,SEEK_SET);
 	fwrite(cnt,1,PAGE_SIZE,fp);
 	//if fp is not closed,there could be undefined behaviors, e.g.  counter value undefined.
@@ -62,6 +64,7 @@ RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandl
 	ixFileHandle.noPages = cnt[3];
 	ixFileHandle.rootPage = cnt[4];
 
+	//cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
 	return 0;
 }
 
@@ -507,7 +510,7 @@ RC IndexManager::splitIndexEntry(IXFileHandle &ixFileHandle,indexEntry &newChild
     char *cur = data;
 	unsigned dataLen = 0;
 	cur += sizeof(unsigned);
-	while(cur+dataLen-data < spaceToBeSplit/2.0){
+	while(cur+dataLen-data <= spaceToBeSplit/2.0){
 		cur += dataLen;
 		if(attribute.type == AttrType::TypeInt){
 			dataLen = sizeof(int)+sizeof(RID)+sizeof(unsigned);
@@ -572,7 +575,7 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
     //Search for 'the middle point'
     char *cur = data;
     unsigned dataLen = 0;
-    while(cur+dataLen-data < spaceToBeSplit/2.0){
+    while(cur+dataLen-data <= spaceToBeSplit/2.0){
     	cur += dataLen;
         if(attribute.type == AttrType::TypeInt){
         	dataLen = sizeof(int)+sizeof(RID);
@@ -584,7 +587,7 @@ RC IndexManager::splitDataEntry(IXFileHandle &ixFileHandle,indexEntry &newChildE
             dataLen = strLen+sizeof(RID)+sizeof(unsigned);
         }
     }
-    //cout<<"insertOffset:"<<insertOffset<<" spaceToBeSplit:"<<spaceToBeSplit<<" half page offset:"<<cur-data<<endl;
+    //cout<<"insertOffset:"<<insertOffset<<" spaceToBeSplit:"<<spaceToBeSplit<<" half page offset:"<<cur-data<<endl<<endl;
 
     //create a new leaf node called L2
     memcpy(newn,cur,spaceToBeSplit-(cur-data));
@@ -661,7 +664,6 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
     dataEntry keyEntry;
     unsigned ckLen;
     transformKeyRIDPair(attribute,keyEntry,key,rid,ckLen);
-    //cout<<rid.pageNum<<"th data entry length(when insertion):"<<ckLen<<endl;
 
     unsigned freeSpaceOffset = *(unsigned *)(page+PAGE_SIZE-sizeof(unsigned));
     bool isLeaf = *(unsigned *)(page+PAGE_SIZE-2*sizeof(unsigned));
@@ -670,7 +672,9 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
         //Leaf node case
         char composite[PAGE_SIZE];
         getCompositeKey(composite,attribute,keyEntry,ckLen);
-        isFull = freeSpaceOffset+ckLen > PAGE_SIZE-4*sizeof(unsigned);        
+        isFull = freeSpaceOffset+ckLen > PAGE_SIZE-4*sizeof(unsigned);
+        //cout<<"Current freeSpaceOffset:"<<freeSpaceOffset<<" data entry length:"<<ckLen<<endl;
+        //cout<<"Leaf page "<<pageNumber<<" full? "<<isFull<<endl;
 
         unsigned offset;
         rc = searchEntry(ixFileHandle,attribute,keyEntry,page,offset);
@@ -686,7 +690,7 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
             //newChildEntry.valid = false;
         }else{
         	//if(rid.pageNum % 50 == 0)
-        	//cout<<"Current rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
+        	//cout<<"Current data entry page number:"<<pageNumber<<endl;
             rc = splitDataEntry(ixFileHandle,newChildEntry,attribute,offset,page,composite,ckLen,pageNumber);
             //cout<<"split data entry return "<<rc<<endl;
             if(rc != 0)
@@ -712,7 +716,7 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
             char bin[PAGE_SIZE];
             unsigned iLen;
             getNewChildEntry(bin,newChildEntry,attribute,iLen);
-            isFull = freeSpaceOffset+iLen > PAGE_SIZE-4*sizeof(unsigned);
+            isFull = freeSpaceOffset+iLen > PAGE_SIZE-2*sizeof(unsigned);
 
             /**
             If there are enough space in this node for the copy-up entry,just insert it,else split this node.
@@ -734,7 +738,6 @@ RC IndexManager::backtraceInsert(IXFileHandle &ixFileHandle,const unsigned pageN
             }else{ //Since no enough space,split index node
             	//cout<<"Current index page number:"<<pageNumber<<endl;
                 rc = splitIndexEntry(ixFileHandle,newChildEntry,attribute,offset,page,bin,iLen,pageNumber);
-                //cout<<"Split index page return "<<rc<<endl;
                 if(rc != 0)
                     return -1;
                 //If this page is root node,then create a new root node
@@ -1010,6 +1013,7 @@ RC IndexManager::scan(IXFileHandle &ixFileHandle,
 void IndexManager::printBtree(IXFileHandle &ixFileHandle, const Attribute &attribute) const {
 	//cerr<<"printBtree..."<<" from "<<ixFileHandle.rootPage<<endl;
 	printNode(ixFileHandle,attribute,ixFileHandle.rootPage,0);
+	cout<<endl;
 	return;
 }
 
@@ -1190,6 +1194,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
             return IX_EOF;
         }
         scanning = true;
+        //cout<<"First page number for scanning:"<<currPage<<endl;
     }
     //At this point, currPage and currOffset fields point to a data entry that fulfills lowKey condition.
     //We now process records until we encounter a data entry that doesn't fulfill highKey condition.
@@ -1230,6 +1235,9 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
      * in which case this function will wrongly search for the next page.
      * By the way,it seems that isNewPage(name changed from enteredNewPage) is useless.
      * */
+    if(lastReadFreeSpaceOffset == INT_MAX){
+    	lastReadFreeSpaceOffset = currentFreeSpaceOffset;
+    }
     if(currentFreeSpaceOffset < lastReadFreeSpaceOffset) {
 		currOffset -= lastReadDataEntryLength;
 		lastReadFreeSpaceOffset = currentFreeSpaceOffset;
@@ -1281,6 +1289,12 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
     rid.slotNum = readDataEntry.rid.slotNum;
     transformDataEntryKey(readDataEntry, key);
     currOffset += lastReadDataEntryLength;
+    if(currOffset >= currentFreeSpaceOffset){
+    	currPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
+    	currOffset = 0;
+    	lastReadFreeSpaceOffset = INT_MAX;
+    }
+
     return 0;
 }
 
@@ -1368,6 +1382,7 @@ IXFileHandle::IXFileHandle() {
     ixWritePageCounter = 0;
     ixAppendPageCounter = 0;
     noPages = 0;
+    lastTableID = 0;
     rootPage = 0;
     fp = nullptr;
 }
