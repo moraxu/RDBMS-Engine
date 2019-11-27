@@ -1160,14 +1160,26 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     if(rc != 0) {
         return rc;
     }
+    unsigned currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
+
     rc = IndexManager::instance().searchEntry(*ixFileHandle, attribute, lowKeyEntry, lowKeyInclusive, page, currOffset);
     if(rc != 0) {
         return rc;
     }
-    //If the record is not on the page where it's supposed to be,
-    //getNextEntry() will set "currOffset" and "currPage" to the beginning of next page, if any
-    lastReadFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-    lastReadDataEntryLength = 0;
+    //If the record is not on the page where it's supposed to be:
+    if(currOffset >= currentFreeSpaceOffset){
+        currPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
+        if(currPage == -1) {
+            return IX_EOF;
+        }
+        currOffset = 0;
+        lastReadFreeSpaceOffset = INT_MAX;
+    }
+    else {
+        lastReadFreeSpaceOffset = currentFreeSpaceOffset;
+        lastReadDataEntryLength = 0;
+    }
+
     return 0;
 }
 
@@ -1207,6 +1219,10 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
         scanning = true;
         //cout<<"First page number for scanning:"<<currPage<<endl;
     }
+    if(currPage == -1) {
+        scanning = false;
+        return IX_EOF;
+    }
     //At this point, currPage and currOffset fields point to a data entry that fulfills lowKey condition.
     //We now process records until we encounter a data entry that doesn't fulfill highKey condition.
 
@@ -1239,41 +1255,11 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
         return rc;
     }
     unsigned currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-    /*
-     * If deletion happens since last time this function is called,
-     * then currOffset should be updated immediately,
-     * otherwise currOffset could be greater than currentFreeSpaceOffset even actually it's not,
-     * in which case this function will wrongly search for the next page.
-     * By the way,it seems that isNewPage(name changed from enteredNewPage) is useless.
-     * */
-    if(lastReadFreeSpaceOffset == INT_MAX){
-    	lastReadFreeSpaceOffset = currentFreeSpaceOffset;
-    }
-    if(currentFreeSpaceOffset < lastReadFreeSpaceOffset) {
+
+    if(lastReadFreeSpaceOffset != INT_MAX && currentFreeSpaceOffset < lastReadFreeSpaceOffset){
 		currOffset -= lastReadDataEntryLength;
-		lastReadFreeSpaceOffset = currentFreeSpaceOffset;
 	}
-
-    //If it's time to skip to the next page, if any
-    // (it's a loop because theoretically there might be an empty page in the middle)
-    while(currOffset >= currentFreeSpaceOffset) {
-        int nextPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
-        //cout<<"Next data entry page:"<<nextPage<<endl;
-        if(nextPage == -1) {
-        	scanning = false;
-            return IX_EOF;
-        }
-
-        //There is next page
-        rc = ixFileHandle->readPage(nextPage,page);
-        if(rc != 0) {
-            return rc;
-        }
-        currPage = nextPage;
-        currOffset = 0;
-        currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-        lastReadFreeSpaceOffset = currentFreeSpaceOffset;
-    }
+    lastReadFreeSpaceOffset = currentFreeSpaceOffset;
 
     dataEntry readDataEntry;
     IndexManager::instance().resolveCompositeKey(page+currOffset, attribute, readDataEntry, lastReadDataEntryLength);
