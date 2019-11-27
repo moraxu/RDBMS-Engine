@@ -899,6 +899,17 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                     return -1;
                 }
             }
+            if(rightSiblingPageNo != -1) {
+                rc = ixFileHandle.readPage(rightSiblingPageNo,page);
+                if(rc != 0) {
+                    return -1;
+                }
+                *reinterpret_cast<int*>(page+PAGE_SIZE-4*sizeof(int)) = leftSiblingPageNo;
+                rc = ixFileHandle.writePage(rightSiblingPageNo,page);
+                if(rc != 0) {
+                    return -1;
+                }
+            }
             //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
             return -2;
         }
@@ -1382,7 +1393,6 @@ IXFileHandle::IXFileHandle() {
     ixWritePageCounter = 0;
     ixAppendPageCounter = 0;
     noPages = 0;
-    lastTableID = 0;
     rootPage = 0;
     fp = nullptr;
 }
