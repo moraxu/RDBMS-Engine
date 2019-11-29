@@ -9,6 +9,7 @@ void prepareKeyAndRid(const unsigned count, const unsigned i, char *key, RID &ri
     }
     rid.pageNum = i;
     rid.slotNum = i;
+    //cout<<"char:"<<('a' + i - 1)<<" ASCII number:"<<(unsigned)('a' + i - 1)<<endl;
 }
 
 int testCase_p5(const std::string &indexFileName, const Attribute &attribute) {
@@ -34,6 +35,7 @@ int testCase_p5(const std::string &indexFileName, const Attribute &attribute) {
     unsigned i = 1;
     for (; i <= numOfTuples; i++) {
         prepareKeyAndRid(count, i * 10, key, rid);
+        //cout<<i<<"th data entry length:"<<count<<endl;
 
         rc = indexManager.insertEntry(ixFileHandle, attribute, &key, rid);
         assert(rc == success && "indexManager::insertEntry() should not fail.");
@@ -41,15 +43,18 @@ int testCase_p5(const std::string &indexFileName, const Attribute &attribute) {
 
     // insert the 8th
     prepareKeyAndRid(count, i++ * 10, key, rid);
+    //cout<<"8th data entry length:"<<count<<endl;
     rc = indexManager.insertEntry(ixFileHandle, attribute, &key, rid);
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 
     // print BTree, by this time the BTree should have 2 or 3 level 
     // depend on the design of your root
+    //cout<<"First printBtree..."<<endl;
     indexManager.printBtree(ixFileHandle, attribute);
 
     // insert the 9th
     prepareKeyAndRid(count, i++ * 10, key, rid);
+    //cout<<"9th data entry length:"<<count<<endl;
     rc = indexManager.insertEntry(ixFileHandle, attribute, &key, rid);
     assert(rc == success && "indexManager::insertEntry() should not fail.");
 
@@ -68,6 +73,7 @@ int testCase_p5(const std::string &indexFileName, const Attribute &attribute) {
     std::cerr << "After Insertion - R:" << readPageCountInsert << " W:" << writePageCountInsert << " A:"
               << appendPageCountInsert << std::endl;
 
+    //cout<<"Scan begins..."<<endl;
     rc = indexManager.scan(ixFileHandle, attribute, NULL, NULL, true, true, ix_ScanIterator);
     assert(rc == success && "indexManager::scan() should not fail.");
 
@@ -92,6 +98,7 @@ int testCase_p5(const std::string &indexFileName, const Attribute &attribute) {
     unsigned roughLeafReadCount = readPageCountScan - readPageCountInsert;
     // If the B+Tree index is 3 level: 3 I/O + 9 scan I/O per entry at maximum  = 12 
     // If the B+Tree index is 2 level: 2 I/O + 9 scan I/O per entry at maximum  = 11 
+    //cout<<"roughLeafReadCount:"<<roughLeafReadCount<<endl;
     if (roughLeafReadCount > 12) {
         std::cerr << "Too many read I/Os for scan: " << roughLeafReadCount << ", the leaf nodes should be linked."
                   << std::endl;
