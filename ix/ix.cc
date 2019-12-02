@@ -55,15 +55,14 @@ RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandl
 		return -1;
 	}
 
-	unsigned cnt[6];
+	unsigned cnt[5];
 	fseek(ixFileHandle.fp,0,SEEK_SET);
-	fread(cnt,sizeof(unsigned),6,ixFileHandle.fp);
+	fread(cnt,sizeof(unsigned),5,ixFileHandle.fp);
 	ixFileHandle.ixReadPageCounter = cnt[0];
 	ixFileHandle.ixWritePageCounter =  cnt[1];
 	ixFileHandle.ixAppendPageCounter = cnt[2];
 	ixFileHandle.noPages = cnt[3];
-	ixFileHandle.lastTableID = cnt[4];
-	ixFileHandle.rootPage = cnt[5];
+	ixFileHandle.rootPage = cnt[4];
 
 	//cout<<cnt[0]<<" "<<cnt[1]<<" "<<cnt[2]<<" "<<cnt[3]<<endl;
 	return 0;
@@ -74,14 +73,13 @@ RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
 		return -1;
 	}
 	fseek(ixFileHandle.fp, 0, SEEK_SET);
-	unsigned cnt[6];
+	unsigned cnt[5];
 	cnt[0] = ixFileHandle.ixReadPageCounter;
 	cnt[1] = ixFileHandle.ixWritePageCounter;
 	cnt[2] = ixFileHandle.ixAppendPageCounter;
 	cnt[3] = ixFileHandle.noPages;
-	cnt[4] = ixFileHandle.lastTableID;
-	cnt[5] = ixFileHandle.rootPage;
-	fwrite(cnt,sizeof(unsigned),6,ixFileHandle.fp);
+	cnt[4] = ixFileHandle.rootPage;
+	fwrite(cnt,sizeof(unsigned),5,ixFileHandle.fp);
 	//File close error!
 	if(fclose(ixFileHandle.fp) == EOF) {
 		return -1;
@@ -843,17 +841,13 @@ RC IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attrib
     dataEntry dataEnt;
     unsigned dummyLength; //not needed
     if(transformKeyRIDPair(attribute, dataEnt, key, rid, dummyLength) != 0) {
-        //cout << "RC != 0 from transformKeyRIDPair\n";
         return -1;
     }
-    //cout << "Successful return from transformKeyRIDPair\n";
 
     if(deleteEntryHelper(ixFileHandle, ixFileHandle.rootPage, attribute, dataEnt, true) != -1) {
-        //cout << "Successful return from deleteEntryHelper\n";
         return 0;
     }
 
-    //cout << "RC == -1 from deleteEntryHelper\n";
     return -1;
 }
 
@@ -861,7 +855,6 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
     char page[PAGE_SIZE];
     RC rc = ixFileHandle.readPage(pageNumber,page);
     if(rc != 0) {
-        //cout <<"\tdeleteEntryHelper: 1) Page wasn't read succesffuly\n";
         return -1;
     }
     const unsigned freeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
@@ -875,7 +868,6 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
     if(*reinterpret_cast<unsigned*>(page+PAGE_SIZE-2*sizeof(unsigned)) == 1) {
         rc = IndexManager::instance().searchEntry(ixFileHandle, attribute, dataEnt, page, offset);
         if(rc != 0 || offset >= freeSpaceOffset) {  //key not found
-            //cout <<"\tdeleteEntryHelper: 2) Key not found, returning -1\n";
             return -1;
         }
 
@@ -884,7 +876,6 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
         IndexManager::instance().resolveCompositeKey(page+offset, attribute, readDataEntry, readDataEntryLength);
 
         if(dataEnt != readDataEntry) {
-            //cout <<"\tdeleteEntryHelper: Some kind of internal error\n";
             return -1;  //not even sure if it's possible, but..
         }
         else if(freeSpaceOffset == readDataEntryLength) { //found data entry is the only one on page, we have to free the page:
@@ -894,25 +885,32 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
             int leftSiblingPageNo = *reinterpret_cast<int*>(page+PAGE_SIZE-4*sizeof(int));
             rc = ixFileHandle.writePage(pageNumber,page);
             if(rc != 0) {
-                //cout <<"\tdeleteEntryHelper: 3) Page wasn't written succesffuly\n";
                 return -1;
             }
 
             if(leftSiblingPageNo != -1) {
                 rc = ixFileHandle.readPage(leftSiblingPageNo,page);
                 if(rc != 0) {
-                    //cout <<"\tdeleteEntryHelper: 4) Page wasn't read succesffuly\n";
                     return -1;
                 }
                 *reinterpret_cast<int*>(page+PAGE_SIZE-3*sizeof(int)) = rightSiblingPageNo;
                 rc = ixFileHandle.writePage(leftSiblingPageNo,page);
                 if(rc != 0) {
-                    //cout <<"\tdeleteEntryHelper: 5) Page wasn't written succesffuly\n";
+                    return -1;
+                }
+            }
+            if(rightSiblingPageNo != -1) {
+                rc = ixFileHandle.readPage(rightSiblingPageNo,page);
+                if(rc != 0) {
+                    return -1;
+                }
+                *reinterpret_cast<int*>(page+PAGE_SIZE-4*sizeof(int)) = leftSiblingPageNo;
+                rc = ixFileHandle.writePage(rightSiblingPageNo,page);
+                if(rc != 0) {
                     return -1;
                 }
             }
             //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
-            //cout <<"\tdeleteEntryHelper: 6) Returning -2\n";
             return -2;
         }
         else {  //leaf page contains more than one data entry
@@ -920,10 +918,8 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
             *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= readDataEntryLength;
             rc = ixFileHandle.writePage(pageNumber,page);
             if(rc != 0) {
-                //cout <<"\tdeleteEntryHelper: 7) Page wasn't written succesffuly\n";
                 return -1;
             }
-            //cout <<"\tdeleteEntryHelper: 8) Returning 0\n";
             return 0;
         }
     }
@@ -932,17 +928,14 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
         indexEntry indexEnt(dataEnt);
         rc = searchEntry(ixFileHandle, attribute, indexEnt, page, offset);
         if(rc != 0) {
-            //cout <<"\tdeleteEntryHelper: Rather impossible if statement\n";
             return -1;
         }
 
         rc = deleteEntryHelper(ixFileHandle, *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)), attribute, dataEnt, false);
         if(rc == 0 || rc == -1) { //no deletion took place below this node/page below this node had more than one entry when the deletion took place (rc==0) OR key not found (rc==-1)
-            //cout <<"\tdeleteEntryHelper: 9) Returning rc = " << rc << " from non-leaf page level\n";
             return rc;
         }
         else if(rc == -2) { //key was deleted from leaf page below this level and the leaf page became empty
-            //cout <<"\tdeleteEntryHelper: 10) Having read -2 on non-leaf page level..\n";
             unsigned lengthOfIndexEnt = indexEnt.actualLength(attribute);
             //if the length of the index entry + unpaired page pointer == freeSpaceOffset, this page contains only one index entry
             if(lengthOfIndexEnt + sizeof(unsigned) == freeSpaceOffset) {
@@ -959,14 +952,12 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                     //the other of this marked-for-deletion page's child. Thus, only one leaf page remains and it happens to be the new root.
                     ixFileHandle.rootPage = otherChildPageNo;
                     //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
-                    //cout <<"\tdeleteEntryHelper: 11) ..Returning 0 (root case)\n";
                     return 0;
                 }
                 else {
                     //If this parent (non-leaf) node is not a root node, then it is also marked for deletion
                     //and it returns a page number of its other child.
                     //TODO: ADD THE PAGE TO LIST OF FREE PAGES ON THE HIDDEN PAGE
-                    //cout <<"\tdeleteEntryHelper: 12) ..Returning otherChildPageNo= " << otherChildPageNo <<" (non-root case)\n";
                     return otherChildPageNo;
                 }
             }
@@ -976,10 +967,8 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
                 *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned)) -= lengthOfIndexEnt;
                 rc = ixFileHandle.writePage(pageNumber,page);
                 if(rc != 0) {
-                    //cout <<"\tdeleteEntryHelper: 13) ..Page wasn't written succesffuly\n";
                     return -1;
                 }
-                //cout <<"\tdeleteEntryHelper: 14) ..Returning 0 - not last index entry case\n";
                 return 0;
             }
         }
@@ -988,10 +977,8 @@ RC IndexManager::deleteEntryHelper(IXFileHandle &ixFileHandle, const unsigned pa
             *reinterpret_cast<unsigned*>(page+offset-sizeof(unsigned)) = rc;
             rc = ixFileHandle.writePage(pageNumber,page);
             if(rc != 0) {
-                //cout <<"\tdeleteEntryHelper: 15) Page wasn't written succesffuly\n";
                 return -1;
             }
-            //cout <<"\tdeleteEntryHelper: 16) Returning 0 - having read page number to replace the current one\n";
             return 0;
         }
     }
@@ -1173,14 +1160,26 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     if(rc != 0) {
         return rc;
     }
+    unsigned currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
+
     rc = IndexManager::instance().searchEntry(*ixFileHandle, attribute, lowKeyEntry, lowKeyInclusive, page, currOffset);
     if(rc != 0) {
         return rc;
     }
-    //If the record is not on the page where it's supposed to be,
-    //getNextEntry() will set "currOffset" and "currPage" to the beginning of next page, if any
-    lastReadFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-    lastReadDataEntryLength = 0;
+    //If the record is not on the page where it's supposed to be:
+    if(currOffset >= currentFreeSpaceOffset){
+        currPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
+        if(currPage == -1) {
+            return IX_EOF;
+        }
+        currOffset = 0;
+        lastReadFreeSpaceOffset = INT_MAX;
+    }
+    else {
+        lastReadFreeSpaceOffset = currentFreeSpaceOffset;
+        lastReadDataEntryLength = 0;
+    }
+
     return 0;
 }
 
@@ -1220,6 +1219,10 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
         scanning = true;
         //cout<<"First page number for scanning:"<<currPage<<endl;
     }
+    if(currPage == -1) {
+        scanning = false;
+        return IX_EOF;
+    }
     //At this point, currPage and currOffset fields point to a data entry that fulfills lowKey condition.
     //We now process records until we encounter a data entry that doesn't fulfill highKey condition.
 
@@ -1252,41 +1255,11 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
         return rc;
     }
     unsigned currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-    /*
-     * If deletion happens since last time this function is called,
-     * then currOffset should be updated immediately,
-     * otherwise currOffset could be greater than currentFreeSpaceOffset even actually it's not,
-     * in which case this function will wrongly search for the next page.
-     * By the way,it seems that isNewPage(name changed from enteredNewPage) is useless.
-     * */
-    if(lastReadFreeSpaceOffset == INT_MAX){
-    	lastReadFreeSpaceOffset = currentFreeSpaceOffset;
-    }
-    if(currentFreeSpaceOffset < lastReadFreeSpaceOffset) {
+
+    if(lastReadFreeSpaceOffset != INT_MAX && currentFreeSpaceOffset < lastReadFreeSpaceOffset){
 		currOffset -= lastReadDataEntryLength;
-		lastReadFreeSpaceOffset = currentFreeSpaceOffset;
 	}
-
-    //If it's time to skip to the next page, if any
-    // (it's a loop because theoretically there might be an empty page in the middle)
-    while(currOffset >= currentFreeSpaceOffset) {
-        int nextPage = *reinterpret_cast<int *>(page+PAGE_SIZE-3*sizeof(unsigned));
-        //cout<<"Next data entry page:"<<nextPage<<endl;
-        if(nextPage == -1) {
-        	scanning = false;
-            return IX_EOF;
-        }
-
-        //There is next page
-        rc = ixFileHandle->readPage(nextPage,page);
-        if(rc != 0) {
-            return rc;
-        }
-        currPage = nextPage;
-        currOffset = 0;
-        currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
-        lastReadFreeSpaceOffset = currentFreeSpaceOffset;
-    }
+    lastReadFreeSpaceOffset = currentFreeSpaceOffset;
 
     dataEntry readDataEntry;
     IndexManager::instance().resolveCompositeKey(page+currOffset, attribute, readDataEntry, lastReadDataEntryLength);
@@ -1406,7 +1379,6 @@ IXFileHandle::IXFileHandle() {
     ixWritePageCounter = 0;
     ixAppendPageCounter = 0;
     noPages = 0;
-    lastTableID = 0;
     rootPage = 0;
     fp = nullptr;
 }
@@ -1421,7 +1393,6 @@ RC IXFileHandle::readPage(PageNum pageNum, void *data){
 		return -1;
 	}
 
-	//NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
 	fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
 	unsigned res = fread(data,sizeof(char),PAGE_SIZE,fp);
 	//File read error!
@@ -1440,7 +1411,6 @@ RC IXFileHandle::writePage(PageNum pageNum, const void *data){
 		return -1;
 	}
 
-	//NOTE:every time when a file is ready for write or read, the file pointer starts from sizeof(int)*4, NOT 0.
 	fseek( fp, (pageNum+1)*PAGE_SIZE, SEEK_SET );
 	unsigned res = fwrite(data,sizeof(char),PAGE_SIZE,fp);
 	//File write error!

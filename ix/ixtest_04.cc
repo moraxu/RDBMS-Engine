@@ -37,9 +37,7 @@ int testCase_4(const std::string &indexFileName, const Attribute &attribute) {
               << std::endl;
 
     // delete entry
-    cout << "--Entering deleteEntry--\n";
     rc = indexManager.deleteEntry(ixFileHandle, attribute, &key, rid);
-    cout << "--Exiting deleteEntry--\n";
     assert(rc == success && "indexManager::deleteEntry() should not fail.");
 
     rc = ixFileHandle.collectCounterValues(readPageCountAfter, writePageCountAfter, appendPageCountAfter);
