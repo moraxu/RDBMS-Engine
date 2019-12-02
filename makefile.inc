@@ -1,6 +1,6 @@
 ## For students: change this path to the root of your code if this doesn't work
-CODEROOT = ..
-## CODEROOT = ~/Desktop/cs222-fall19-team-19
+##CODEROOT = ..
+CODEROOT = ~/Desktop/cs222-fall19-team-19
 
 #CC = gcc
 CC = g++ -ledit
@@ -12,4 +12,4 @@ CPPFLAGS = -Wall -I$(CODEROOT) -g -std=c++11  # with debugging info and the C++1
 CPPFLAGS = -Wall -I$(CODEROOT) -std=c++11 -ledit -DDATABASE_FOLDER=\"$(CODEROOT)/cli/\" -g # with debugging info
 
 # Uncomment the following line to compile the code without using CLI.
-#CPPFLAGS = -Wall -I$(CODEROOT) -g -std=c++0x  # with debugging info and the C++11 feature
+CPPFLAGS = -Wall -I$(CODEROOT) -g -std=c++11  # with debugging info and the C++11 feature

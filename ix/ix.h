@@ -133,7 +133,6 @@ class IX_ScanIterator {
      * If a scanner is already in scanning state,it should not be assigned with another scan task.
      */
     bool scanning;
-    bool isNewPage;
 
     unsigned currPage;
     unsigned currOffset;

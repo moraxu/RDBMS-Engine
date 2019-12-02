@@ -29,6 +29,37 @@ struct Condition {
     Value rhsValue;             // right-hand side value if bRhsIsAttr = FALSE
 };
 
+class iterable{
+	char *cont;
+	unsigned len;
+	vector<unsigned> offset;
+	vector<Attribute> attrs;
+
+public:
+	bool operator()(const iterable& x, const iterable& y){
+		unsigned fieldLen = offset.size()-1;
+		for(unsigned i = 0;i < fieldLen;i++){
+			if(attrs[i].type == TypeInt){
+				int xCont = *(int *)(x.cont+x.offset[i]);
+				int yCont = *(int *)(y.cont+y.offset[i]);
+				if(xCont < yCont) return true;
+				else if(xCont > yCont) return false;
+			}else if(attrs[i].type == TypeReal){
+				float xCont = *(float *)(x.cont+x.offset[i]);
+				float yCont = *(float *)(y.cont+y.offset[i]);
+				if(xCont < yCont) return true;
+				else if(xCont > yCont) return false;
+			}else{
+				string xCont = string(x.cont+x.offset[i],y.offset[i+1]-y.offset[i]);
+				string yCont = string(y.cont+y.offset[i],y.offset[i+1]-y.offset[i]);
+				if(xCont < yCont) return true;
+				else if(xCont > yCont) return false;
+			}
+		}
+		return false;
+	}
+}; // This struct is used to convert binary streams of records into iterables so they can be sorted
+
 class Iterator {
     // All the relational operators and access methods are iterators.
 public:
@@ -166,6 +197,9 @@ public:
 
 class Filter : public Iterator {
     // Filter operator
+	Iterator *it;
+	Condition con;
+	vector<Attribute> attrs;
 public:
     Filter(Iterator *input,               // Iterator of input R
            const Condition &condition     // Selection condition
@@ -173,41 +207,85 @@ public:
 
     ~Filter() override = default;
 
-    RC getNextTuple(void *data) override { return QE_EOF; };
+    template <typename T>
+    bool performOp(const T &x,const T &y);
+
+    bool filterMatch(char *data);
+
+    RC getNextTuple(void *data) override;
 
     // For attribute in std::vector<Attribute>, name it as rel.attr
-    void getAttributes(std::vector<Attribute> &attrs) const override {};
+    void getAttributes(std::vector<Attribute> &attrs) const override;
 };
 
 class Project : public Iterator {
     // Projection operator
+	Iterator *it;
+	vector<string> projectedAttrName;
+	vector<Attribute> projectedAttr;
+	string tableName;
 public:
     Project(Iterator *input,                    // Iterator of input R
-            const std::vector<std::string> &attrNames) {};   // std::vector containing attribute names
+            const std::vector<std::string> &attrNames);   // std::vector containing attribute names
     ~Project() override = default;
 
-    RC getNextTuple(void *data) override { return QE_EOF; };
+    void preprocess(char *pre,char *post);
+
+    void convertBinaryToIterable(vector<iterable> &v,char *data);
+
+    void covertIterableToBinary(const vector<iterable> v,char *data);
+
+    RC getNextTuple(void *data) override;
 
     // For attribute in std::vector<Attribute>, name it as rel.attr
-    void getAttributes(std::vector<Attribute> &attrs) const override {};
+    void getAttributes(std::vector<Attribute> &attrs) const override;
 };
 
 class BNLJoin : public Iterator {
     // Block nested-loop join operator
+	Iterator *left;
+	TableScan *right;
+	Condition con;
+	vector<Attribute> leftAttrs;
+	vector<Attribute> rightAttrs;
+	vector<Attribute> attrs;
+	unsigned bufferPage; // Buffer pool size
+	char *leftTable; // Memory buffer allocated for left table(size of bufferPage*PAGE_SIZE)
+	char *rightTable; // Memory buffer allocated for right table(PAGE_SIZE)
+	unsigned leftOffset; // Actual largest offset of loaded left table
+	unsigned currLOffset; // Current offset in page leftPageNum
+	unsigned rightOffset;
+	unsigned currROffset;
+	bool endOfFile; // Used in getNextTuple() to help determine whether it should return QE_EOF
+	//RID rightRid; // Current rid of right table to be checked for joining
+
 public:
     BNLJoin(Iterator *leftIn,            // Iterator of input R
             TableScan *rightIn,           // TableScan Iterator of input S
             const Condition &condition,   // Join condition
             const unsigned numPages       // # of pages that can be loaded into memory,
             //   i.e., memory block size (decided by the optimizer)
-    ) {};
+    );
 
-    ~BNLJoin() override = default;;
+    ~BNLJoin() override = default;
 
-    RC getNextTuple(void *data) override { return QE_EOF; };
+    RC loadLeftTable();
+
+    RC loadRightPage();
+
+    RC moveToNextMatchingPairs(const unsigned preLeftTupLen,const unsigned preRightTupLen);
+
+    template <typename T>
+    bool performOp(const T &x,const T &y);
+
+    bool BNLJoinMatch(unsigned &leftTupleLen,unsigned &rightTupleLen);
+
+    void BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned rightTupleLen);
+
+    RC getNextTuple(void *data) override;
 
     // For attribute in std::vector<Attribute>, name it as rel.attr
-    void getAttributes(std::vector<Attribute> &attrs) const override {};
+    void getAttributes(std::vector<Attribute> &attrs) const override;
 };
 
 class INLJoin : public Iterator {
