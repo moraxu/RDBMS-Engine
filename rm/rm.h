@@ -3,8 +3,10 @@
 
 #include <string>
 #include <vector>
+#include <map>
 
 #include "../rbf/rbfm.h"
+#include "../ix/ix.h"
 
 # define RM_EOF (-1)  // end of a scan operator
 
@@ -33,13 +35,29 @@ public:
 
 // RM_IndexScanIterator is an iterator to go through index entries
 class RM_IndexScanIterator {
+    IX_ScanIterator ix_ScanIterator;
+
 public:
     RM_IndexScanIterator() {};    // Constructor
     ~RM_IndexScanIterator() {};    // Destructor
 
+    IX_ScanIterator &getIxScanIterator() {
+        return ix_ScanIterator;
+    }
+
+    void setIxScanIterator(const IX_ScanIterator &ixScanIterator) {
+        ix_ScanIterator = ixScanIterator;
+    }
+
     // "key" follows the same format as in IndexManager::insertEntry()
-    RC getNextEntry(RID &rid, void *key) { return RM_EOF; };    // Get next matching entry
-    RC close() { return -1; };                        // Terminate index scan
+    RC getNextEntry(RID &rid, void *key) { return ix_ScanIterator.getNextEntry(rid, key); };    // Get next matching entry
+    RC close() { return ix_ScanIterator.close(); };                        // Terminate index scan
+};
+
+//Helper class used in RelationManager::processIndexesForTable method
+struct IndexAttributeInfo {
+    RID rid;                //rid of entry in Indexes table, so far used only in RelationManager::destroyIndexes method
+    std::string filename;   //index filename associated with a table's attribute
 };
 
 // Relation Manager
@@ -51,6 +69,8 @@ public:
 
     RC createColumnDescriptor();
 
+    RC createIndexDescriptor();
+
     RC openFile(const std::string &tableName,FileHandle &fileHandle);
 
     RC createFile(const std::string &fileName);
@@ -59,13 +79,15 @@ public:
 
     RC getIdFromTableName(const std::string &tableName);
 
-    std::string getFileName(const std::string &tableName);
+    std::string getTableFilename(const std::string &tableName);
 
     RC insertCatalogTableTuple(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, RID &rid);
 
     void createTableTableRow(const unsigned& tableID, const std::string &tableName, std::vector<byte>& bytesToWrite, bool isSystemTable);
 
     void createColumnTableRow(const unsigned& tableID, const Attribute &attribute, const unsigned& colPos, std::vector<byte>& bytesToWrite);
+
+    void createIndexTableRow(const unsigned& tableID, const std::string& attributeName, const std::string& filename, std::vector<byte>& bytesToWrite);
 
     RC createCatalog();
 
@@ -104,6 +126,8 @@ public:
             const std::vector<std::string> &attributeNames, // a list of projected attributes
             RM_ScanIterator &rm_ScanIterator);
 
+    RC processIndexesForTable(const unsigned &tableID, const std::set<std::string> &attributeNames, std::map<std::string, IndexAttributeInfo>& attributes);
+
     // Extra credit work (10 points)
     RC addAttribute(const std::string &tableName, const Attribute &attr);
 
@@ -113,6 +137,8 @@ public:
     RC createIndex(const std::string &tableName, const std::string &attributeName);
 
     RC destroyIndex(const std::string &tableName, const std::string &attributeName);
+
+    RC destroyIndexes(const unsigned &tableID, const std::set<std::string> &attributeNames);
 
     // indexScan returns an iterator to allow the caller to go through qualified entries in index
     RC indexScan(const std::string &tableName,
@@ -132,6 +158,12 @@ protected:
 private:
     std::vector<Attribute> tablesDescriptor; //Descriptor of 'Tables' which is  initialized when object created
     std::vector<Attribute> columnDescriptor; //Descriptor of 'Columns' which is  initialized when object created
+    std::vector<Attribute> indexesDescriptor; //Descriptor of 'Indexes' which is  initialized when object created
+
+    RC handleIndexesForInsertion(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, const RID &rid);
+    RC handleIndexesForDeletion(const std::string &tableName, const std::vector<Attribute> &attrs, const RID &rid);
+    RC handleIndexesForUpdate(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, const RID &rid);
+
     unsigned lastTableID;
     bool modifySystemTable_AdminRequest;
 };
