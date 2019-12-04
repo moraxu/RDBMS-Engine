@@ -32,7 +32,7 @@ bool Filter::filterMatch(char *data){
 				unsigned conLen = *(unsigned *)(con.rhsValue.data);
 				unsigned tupleStrLen = *(unsigned *)(data+(attrs.size()+2)*sizeof(unsigned)+offset);
 				string eval = string(data+(attrs.size()+2)*sizeof(unsigned)+offset,tupleStrLen);
-				return performOp(eval, string(con.rhsValue.data+sizeof(unsigned),conLen));
+				return performOp(eval, string((char *)con.rhsValue.data+sizeof(unsigned),conLen));
 			}
 		}
 	}
@@ -88,7 +88,7 @@ Project::Project(Iterator *input,const std::vector<std::string> &attrNames){
 	//Create projection file and insert unsorted projected tuple into it.
 	RID rid;
 	char data[PAGE_SIZE],postProcessed[PAGE_SIZE];
-	auto rm = RelationManager::instance();
+	RelationManager& rm = RelationManager::instance();
 	int rc = rm.createFile(tableName);
 	if(rc != 0)
 		return;
@@ -108,9 +108,9 @@ Project::Project(Iterator *input,const std::vector<std::string> &attrNames){
 		fileHandle.readPage(i,data);
 		//Sort
 		vector<iterable> conv;
-		convertBinaryToIterable(conv, data);
-		sort(conv.begin(),conv.end());
-		covertIterableToBinary(conv, data);
+		//convertBinaryToIterable(conv, data);
+		//sort(conv.begin(),conv.end());
+		//covertIterableToBinary(conv, data);
 		fileHandle.writePage(i,data);
 	}
 }
@@ -165,7 +165,7 @@ void Project::preprocess(char *pre,char *post){
  * a self-defined struct.
  * They are both used in external sort.
  * */
-void Project::convertBinaryToIterable(vector<iterable> &v,char *data){
+/*void Project::convertBinaryToIterable(vector<iterable> &v,char *data){
 	unsigned freeSpaceOffset = *(unsigned *)(data+PAGE_SIZE-sizeof(unsigned));
 	unsigned slotSize = *(unsigned *)(data+PAGE_SIZE-2*sizeof(unsigned));
 	for(unsigned i = 0;i < slotSize;i++){
@@ -174,7 +174,7 @@ void Project::convertBinaryToIterable(vector<iterable> &v,char *data){
 		/*
 		 * When the record has been deleted or is a tombstone,ignore it.
 		 * If a tombstone is read, multiple read of one record can occur.
-		 * */
+		 * *
 		if(recordOffset == -1 || recordLen == -1)
 			continue;
 		iterable current;
@@ -188,9 +188,9 @@ void Project::convertBinaryToIterable(vector<iterable> &v,char *data){
 		current.attrs = projectedAttr;
 		v.push_back(current);
 	}
-}
+}*/
 
-void Project::covertIterableToBinary(const vector<iterable> v,char *data){
+/*void Project::covertIterableToBinary(const vector<iterable> v,char *data){
 	unsigned freeSpaceOffset = *(unsigned *)(data+PAGE_SIZE-sizeof(unsigned));
 	unsigned slotSize = *(unsigned *)(data+PAGE_SIZE-2*sizeof(unsigned));
 	unsigned slotID = 0;
@@ -215,10 +215,15 @@ void Project::covertIterableToBinary(const vector<iterable> v,char *data){
 		*recordOffsetInd = page-data;
 		page += recordLen;
 	}
-}
+}*/
 
 RC Project::getNextTuple(void *data){
-
+	char pre[PAGE_SIZE];
+	int rc = it->getNextTuple(pre);
+	if(rc != 0)
+		return rc;
+	preprocess(pre, (char *)data);
+	return 0;
 }
 
 void Project::getAttributes(std::vector<Attribute> &attrs) const {
@@ -536,6 +541,6 @@ void BNLJoin::getAttributes(std::vector<Attribute> &attrs) const {
 	attrs.clear();
 	attrs = leftAttrs;
 
-	for (Attribute &attribute : rightAttrs)
+	for(auto attribute : rightAttrs)
 		attrs.push_back(attribute);
 }

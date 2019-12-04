@@ -231,9 +231,9 @@ public:
 
     void preprocess(char *pre,char *post);
 
-    void convertBinaryToIterable(vector<iterable> &v,char *data);
+    //void convertBinaryToIterable(vector<iterable> &v,char *data);
 
-    void covertIterableToBinary(const vector<iterable> v,char *data);
+    //void covertIterableToBinary(const vector<iterable> v,char *data);
 
     RC getNextTuple(void *data) override;
 
@@ -267,7 +267,7 @@ public:
             //   i.e., memory block size (decided by the optimizer)
     );
 
-    ~BNLJoin() override = default;
+    ~BNLJoin() override;
 
     RC loadLeftTable();
 
