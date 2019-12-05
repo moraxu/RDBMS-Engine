@@ -16,25 +16,39 @@ Filter::Filter(Iterator *input, const Condition &condition) {
 }
 
 /*
- * Input: char *data,tuple in offset format
+ * Input: char *data(null indicator + actual data)
  * */
 bool Filter::filterMatch(char *data){
-	for(int i = 0;i < attrs.size();i++){
+	unsigned nullLen = (unsigned)(ceil(attrs.size()/8.0));
+	char *actualData = data+nullLen;
+	for(unsigned i = 0;i < attrs.size();i++){
+		const char* byteInNullInfoField = data + i/8;
+		bool nullField = *byteInNullInfoField & (1 << 7-i%8);
 		if(attrs[i].name == con.lhsAttr){
-			unsigned offset = *(unsigned *)(data+i*sizeof(unsigned));
-			if(attrs[i].type == TypeInt){
-				int eval = *(int *)(data+(attrs.size()+1)*sizeof(unsigned)+offset);
-				return performOp(eval, *(int *)con.rhsValue.data);
-			}else if(attrs[i].type == TypeReal){
-				float eval = *(float *)(data+(attrs.size()+1)*sizeof(unsigned)+offset);
-				return performOp(eval, *(float *)con.rhsValue.data);
-			}else{
-				unsigned conLen = *(unsigned *)(con.rhsValue.data);
-				unsigned tupleStrLen = *(unsigned *)(data+(attrs.size()+2)*sizeof(unsigned)+offset);
-				string eval = string(data+(attrs.size()+2)*sizeof(unsigned)+offset,tupleStrLen);
-				return performOp(eval, string((char *)con.rhsValue.data+sizeof(unsigned),conLen));
+			if(!nullField){
+				if(attrs[i].type == TypeInt){
+					int eval = *(int *)actualData;
+					return performOp(eval, *(int *)con.rhsValue.data);
+				}else if(attrs[i].type == TypeReal){
+					float eval = *(float *)actualData;
+					return performOp(eval, *(float *)con.rhsValue.data);
+				}else{
+					unsigned conLen = *(unsigned *)(con.rhsValue.data);
+					unsigned tupleStrLen = *(unsigned *)actualData;
+					string eval = string(actualData+sizeof(unsigned),tupleStrLen);
+					return performOp(eval, string((char *)con.rhsValue.data+sizeof(unsigned),conLen));
+				}
 			}
+			else return false;
 		}
+		// Whether this attribute is compared or not, current pointer should proceed.
+		if(!nullField)
+			if(attrs[i].type == TypeInt || attrs[i].type == TypeReal)
+				actualData += sizeof(int);
+			else{
+				unsigned strLen = *(unsigned *)actualData;
+				actualData += (sizeof(unsigned)+strLen);
+			}
 	}
 	// If the filtered field can't be found,return false.
 	return false;
@@ -64,11 +78,11 @@ RC Filter::getNextTuple(void *data){
 	//Filter this tuple got from other operators or tableScan/IndexScan
 	int rc = it->getNextTuple(data);
 	if(rc != 0)
-		return rc;
+		return QE_EOF;
 	while(!filterMatch((char *)data)){
-		it->getNextTuple(data);
+		rc = it->getNextTuple(data);
 		if(rc != 0)
-			return rc;
+			return QE_EOF;
 	}
 	return 0;
 }

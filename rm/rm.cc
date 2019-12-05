@@ -992,6 +992,13 @@ RC RelationManager::scan(const std::string &tableName,
     return RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
 }
 
+/*
+ * This function searches in 'Indexes' CATALOG for entries
+ * satisfy: 'tableID' field = tableID in  and 'attribute-name' field in set 'attributeNames'.
+ * For most of the time this set only has one element in it,
+ * so this function performs single entry search; when we want to delete all the entries associated with certain table,
+ * this set includes all the attributes of corresponding data table.
+ * */
 RC RelationManager::processIndexesForTable(const unsigned &tableID, const std::set<std::string> &attributeNames, map<string, IndexAttributeInfo>& attributes) {
     FileHandle fh;
     RC rc = RecordBasedFileManager::instance().openFile("Indexes",fh);
@@ -1008,11 +1015,16 @@ RC RelationManager::processIndexesForTable(const unsigned &tableID, const std::s
     while(it.getNextRecord(rid,page) != RBFM_EOF){
         byte *cur = page;
         unsigned nullFieldLen = ceil(attr.size()/8.0);
-        cur += nullFieldLen;
+        cur += nullFieldLen; // Null field and table id field
 
         unsigned attributeNameLen = *(unsigned *)cur;
         cur += sizeof(unsigned);
         string readAttributeName = string((char *)cur,attributeNameLen);
+        /*cout<<"attributeNameLen:"<<attributeNameLen<<endl;
+        cout<<"In Indexes CATALOG: current entry-> "<<readAttributeName<<" search attribute set:";
+        for(auto it = attributeNames.begin();it != attributeNames.end();it++)
+        	cout<<*it<<" ";
+        cout<<endl;*/
         if(attributeNames.find(readAttributeName) != attributeNames.end()) {
             cur += attributeNameLen;
 
@@ -1071,38 +1083,42 @@ RC RelationManager::createIndex(const std::string &tableName, const std::string 
     }
 
     //Populate index based on existing records in the given table
-    byte page[PAGE_SIZE];
+    char page[PAGE_SIZE];
     RID rid;
     RM_ScanIterator tableIt;
     std::vector<string> projectedAttr = {attributeName};
     scan(tableName, "", NO_OP, NULL, projectedAttr, tableIt);
 
-    if(tableIt.getNextTuple(rid,page) != RBFM_EOF){
-        byte *cur = page;
-        if(*cur) {  //NO_OP returns also nulls so have to test for them
-            unsigned nullFieldLen = ceil(projectedAttr.size()/8.0);
+    IXFileHandle ixFileHandle;
+	rc = IndexManager::instance().openFile(indexFileName, ixFileHandle);
+	if(rc != 0) {
+		IndexManager::instance().closeFile(ixFileHandle);
+		tableIt.close();
+		return -1;
+	}
+    while(tableIt.getNextTuple(rid,page) != RBFM_EOF){
+        char *cur = page;
+        //NO_OP returns also nulls so have to test for them, and it can be tested with null indicators.
+        unsigned nullFieldLen = ceil(projectedAttr.size()/8.0);
+        bool isNull = *cur & (1 << 7);
+        if(!isNull){
             cur += nullFieldLen;
 
-            IXFileHandle ixFileHandle;
-            rc = IndexManager::instance().openFile(indexFileName, ixFileHandle);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                tableIt.close();
-                return -1;
-            }
+            //cout<<"Insert entry..."<<endl;
             rc = IndexManager::instance().insertEntry(ixFileHandle, attr, cur, rid);
             if(rc != 0) {
                 IndexManager::instance().closeFile(ixFileHandle);
                 tableIt.close();
                 return -1;
             }
-            rc = IndexManager::instance().closeFile(ixFileHandle);
-            if(rc != 0) {
-                tableIt.close();
-                return -1;
-            }
         }
     }
+	//cout<<"File "<<indexFileName<<" page number:"<<ixFileHandle.getNumberOfPages()<<endl;
+    rc = IndexManager::instance().closeFile(ixFileHandle);
+	if(rc != 0) {
+		tableIt.close();
+		return -1;
+	}
 
     return tableIt.close();
 }
@@ -1166,12 +1182,12 @@ RC RelationManager::indexScan(const std::string &tableName,
         return -1;
     }
 
-    //moze tutaj tez ta moja funkcje process cos tam zeby dostac filename?
     IXFileHandle ixFileHandle;
     rc = IndexManager::instance().openFile(attributes[attributeName].filename, ixFileHandle);
     if(rc != 0) {
         return -1;
     }
+    cout<<"File "<<attributes[attributeName].filename<<" page number:"<<ixFileHandle.getNumberOfPages()<<endl;
 
     std::vector<Attribute> attrs;
     rc = getAttributes(tableName, attrs);
@@ -1185,5 +1201,6 @@ RC RelationManager::indexScan(const std::string &tableName,
         }
     }
 
-    return IndexManager::instance().scan(ixFileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.getIxScanIterator());
+    rc = IndexManager::instance().scan(ixFileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.getIxScanIterator());
+    return rc;
 }

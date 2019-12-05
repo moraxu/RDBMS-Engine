@@ -88,6 +88,8 @@ RC testCase_5() {
         memset(data, 0, bufSize);
         actualResultCnt++;
     }
+
+    cout<<actualResultCnt<<endl;
     if (expectedResultCnt != actualResultCnt) {
         cerr << "***** The number of returned tuple is not correct. *****" << endl;
         return exitWithError(is, value, filter, data);

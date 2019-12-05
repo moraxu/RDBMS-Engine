@@ -4,6 +4,9 @@
 #include "../rbf/rbfm.h"
 #include "../rm/rm.h"
 #include "../ix/ix.h"
+#include <iostream>
+
+using namespace std;
 
 #define QE_EOF (-1)  // end of the index scan
 
