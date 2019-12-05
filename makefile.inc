@@ -1,6 +1,6 @@
 ## For students: change this path to the root of your code if this doesn't work
-##CODEROOT = ..
-CODEROOT = ~/Desktop/cs222-fall19-team-19
+CODEROOT = ..
+##CODEROOT = ~/Desktop/cs222-fall19-team-19
 
 #CC = gcc
 CC = g++ -ledit

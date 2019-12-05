@@ -989,7 +989,8 @@ RC RelationManager::scan(const std::string &tableName,
         return -1;
     }
 
-    return RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
+    rc = RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
+    return rc;
 }
 
 /*
@@ -1083,7 +1084,7 @@ RC RelationManager::createIndex(const std::string &tableName, const std::string 
     }
 
     //Populate index based on existing records in the given table
-    char page[PAGE_SIZE];
+    byte page[PAGE_SIZE];
     RID rid;
     RM_ScanIterator tableIt;
     std::vector<string> projectedAttr = {attributeName};
@@ -1096,12 +1097,12 @@ RC RelationManager::createIndex(const std::string &tableName, const std::string 
 		tableIt.close();
 		return -1;
 	}
+
     while(tableIt.getNextTuple(rid,page) != RBFM_EOF){
-        char *cur = page;
+        byte *cur = page;
         //NO_OP returns also nulls so have to test for them, and it can be tested with null indicators.
         unsigned nullFieldLen = ceil(projectedAttr.size()/8.0);
-        bool isNull = *cur & (1 << 7);
-        if(!isNull){
+        if(!(*cur)){
             cur += nullFieldLen;
 
             //cout<<"Insert entry..."<<endl;
@@ -1187,7 +1188,6 @@ RC RelationManager::indexScan(const std::string &tableName,
     if(rc != 0) {
         return -1;
     }
-    cout<<"File "<<attributes[attributeName].filename<<" page number:"<<ixFileHandle.getNumberOfPages()<<endl;
 
     std::vector<Attribute> attrs;
     rc = getAttributes(tableName, attrs);

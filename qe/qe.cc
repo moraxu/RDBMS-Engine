@@ -8,11 +8,9 @@
 using namespace std;
 
 Filter::Filter(Iterator *input, const Condition &condition) {
-	this->it = input;
-	this->con = condition;
-	getAttributes(attrs);
-	if(this->con.op == NO_OP) return;
-	if(con.bRhsIsAttr) return;
+	it = input;
+	con = condition;
+	input->getAttributes(attrs);
 }
 
 /*
@@ -24,31 +22,39 @@ bool Filter::filterMatch(char *data){
 	for(unsigned i = 0;i < attrs.size();i++){
 		const char* byteInNullInfoField = data + i/8;
 		bool nullField = *byteInNullInfoField & (1 << 7-i%8);
-		if(attrs[i].name == con.lhsAttr){
-			if(!nullField){
-				if(attrs[i].type == TypeInt){
+		if(attrs[i].name == con.lhsAttr) {
+			if(!nullField) {
+				if(attrs[i].type == TypeInt) {
 					int eval = *(int *)actualData;
 					return performOp(eval, *(int *)con.rhsValue.data);
-				}else if(attrs[i].type == TypeReal){
+				}
+				else if(attrs[i].type == TypeReal) {
 					float eval = *(float *)actualData;
 					return performOp(eval, *(float *)con.rhsValue.data);
-				}else{
+				}
+				else {
 					unsigned conLen = *(unsigned *)(con.rhsValue.data);
 					unsigned tupleStrLen = *(unsigned *)actualData;
 					string eval = string(actualData+sizeof(unsigned),tupleStrLen);
 					return performOp(eval, string((char *)con.rhsValue.data+sizeof(unsigned),conLen));
 				}
 			}
-			else return false;
-		}
-		// Whether this attribute is compared or not, current pointer should proceed.
-		if(!nullField)
-			if(attrs[i].type == TypeInt || attrs[i].type == TypeReal)
-				actualData += sizeof(int);
-			else{
-				unsigned strLen = *(unsigned *)actualData;
-				actualData += (sizeof(unsigned)+strLen);
+			else {
+                return false;
 			}
+		}
+		else if(!nullField) {
+            if(attrs[i].type == TypeInt) {
+                actualData += sizeof(int);
+            }
+            else if(attrs[i].type == TypeReal) {
+                actualData += sizeof(float);
+            }
+            else{
+                unsigned strLen = *(unsigned *)actualData;
+                actualData += (sizeof(unsigned)+strLen);
+            }
+		}
 	}
 	// If the filtered field can't be found,return false.
 	return false;
@@ -56,18 +62,16 @@ bool Filter::filterMatch(char *data){
 
 template <typename T>
 bool Filter::performOp(const T &x,const T &y){
-	bool res;
-	switch(con.op){
-		case EQ_OP: res = x == y;break;
-		case LT_OP: res = x < y;break;
-		case LE_OP: res = x <= y;break;
-		case GT_OP: res = x > y;break;
-		case GE_OP: res = x >= y;break;
-		case NE_OP: res = x != y;break;
-		case NO_OP: res = false;break;
-		default: res = false;break;
+	switch(con.op) {
+		case EQ_OP: return x == y;
+		case LT_OP: return x < y;
+		case LE_OP: return x <= y;
+		case GT_OP: return x > y;
+		case GE_OP: return x >= y;
+		case NE_OP: return x != y;
+		case NO_OP: return false;
+		default: return false;
 	}
-	return res;
 }
 
 /*
@@ -77,18 +81,20 @@ bool Filter::performOp(const T &x,const T &y){
 RC Filter::getNextTuple(void *data){
 	//Filter this tuple got from other operators or tableScan/IndexScan
 	int rc = it->getNextTuple(data);
-	if(rc != 0)
-		return QE_EOF;
-	while(!filterMatch((char *)data)){
+	if(rc != 0) {
+        return QE_EOF;
+	}
+	while(!filterMatch((char *)data)) {
 		rc = it->getNextTuple(data);
-		if(rc != 0)
-			return QE_EOF;
+		if(rc != 0) {
+            return QE_EOF;
+		}
 	}
 	return 0;
 }
 
 void Filter::getAttributes(std::vector<Attribute> &attrs) const {
-	this->it->getAttributes(attrs);
+	it->getAttributes(attrs);
 }
 
 //attrNames contains its table name!
