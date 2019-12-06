@@ -295,10 +295,20 @@ public:
 class INLJoin : public Iterator {
     // Index nested-loop join operator
     RelationManager& rm;
+    TableScan tableScan;
     Iterator *left;
     IndexScan *right;
     string tempTableName;
+    vector<Attribute> leftAttrs;
+    vector<Attribute> rightAttrs;
     vector<Attribute> attrs;
+
+    void preInitialization(Iterator *leftIn, IndexScan *rightIn);
+    RC extractField(const byte* record, const std::vector<Attribute> &attrs, const string& fieldToExtract, std::vector<byte>& extractedField);
+    void concatenateRecords(const byte* firstRecord, const std::vector<Attribute> &firstRecordAttrs,
+                            const byte* secondRecord, const std::vector<Attribute> &secondRecordAttrs,
+                            std::vector<byte>& result);
+
 public:
     INLJoin(Iterator *leftIn,           // Iterator of input R
             IndexScan *rightIn,          // IndexScan Iterator of input S

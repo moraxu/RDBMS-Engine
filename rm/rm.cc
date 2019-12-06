@@ -635,29 +635,30 @@ RC RelationManager::handleIndexesForInsertion(const std::string &tableName, cons
         const byte *byteInNullInfoField = reinterpret_cast<const byte *>(data) + i / 8;
 
         bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
-        if (!nullField && indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
-        	//cout<<"attribute name as index key:"<<attrs[i].name<<endl;
-            IXFileHandle ixFileHandle;
-            RC rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
-            //cout<<"Open file "<<indexAttributes[attrs[i].name].filename<<" return "<<rc<<endl;
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
+        if (!nullField) {
+        	if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                //cout<<"attribute name as index key:"<<attrs[i].name<<endl;
+                IXFileHandle ixFileHandle;
+                RC rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                //cout<<"Open file "<<indexAttributes[attrs[i].name].filename<<" return "<<rc<<endl;
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
 
-            rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
-            //cout<<"insert rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
-            //cout<<"Insert return "<<rc<<endl;
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
+                rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
+                //cout<<"insert rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
+                //cout<<"Insert return "<<rc<<endl;
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
 
-            rc = IndexManager::instance().closeFile(ixFileHandle);
-            if(rc != 0) {
-                return -1;
-            }
-
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
+        	}
 
             if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
                 actualData += attrs[i].length;
@@ -750,21 +751,23 @@ RC RelationManager::handleIndexesForDeletion(const std::string &tableName, const
         const byte *byteInNullInfoField = reinterpret_cast<const byte *>(data) + i / 8;
 
         bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
-        if (!nullField && indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
-            IXFileHandle ixFileHandle;
-            rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
-            rc = IndexManager::instance().deleteEntry(ixFileHandle, attrs[i], actualData, rid);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
-            rc = IndexManager::instance().closeFile(ixFileHandle);
-            if(rc != 0) {
-                return -1;
+        if (!nullField) {
+            if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                IXFileHandle ixFileHandle;
+                rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().deleteEntry(ixFileHandle, attrs[i], actualData, rid);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
             }
 
             if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
@@ -859,21 +862,23 @@ RC RelationManager::handleIndexesForUpdate(const std::string &tableName, const s
         const byte *byteInNullInfoField = reinterpret_cast<const byte *>(previousData) + i / 8;
 
         bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
-        if (!nullField && indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
-            IXFileHandle ixFileHandle;
-            rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
-            rc = IndexManager::instance().deleteEntry(ixFileHandle, attrs[i], actualData, rid);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
-            rc = IndexManager::instance().closeFile(ixFileHandle);
-            if(rc != 0) {
-                return -1;
+        if (!nullField) {
+            if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                IXFileHandle ixFileHandle;
+                rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().deleteEntry(ixFileHandle, attrs[i], actualData, rid);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
             }
 
             if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
@@ -892,21 +897,23 @@ RC RelationManager::handleIndexesForUpdate(const std::string &tableName, const s
         const byte *byteInNullInfoField = reinterpret_cast<const byte *>(data) + i / 8;
 
         bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
-        if (!nullField && indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
-            IXFileHandle ixFileHandle;
-            rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
-            rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
-            if(rc != 0) {
-                IndexManager::instance().closeFile(ixFileHandle);
-                return -1;
-            }
-            rc = IndexManager::instance().closeFile(ixFileHandle);
-            if(rc != 0) {
-                return -1;
+        if (!nullField) {
+            if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                IXFileHandle ixFileHandle;
+                rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
             }
 
             if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {

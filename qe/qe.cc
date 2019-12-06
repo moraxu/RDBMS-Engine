@@ -566,23 +566,127 @@ void Aggregate::getAttributes(std::vector<Attribute> &attrs) const{
 			setAttribute(attrs[i]);
 }
 
-INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition) : rm(RelationManager::instance()) {
+/*
+ * In this constructor's intializer list we use VERY tricky approach to create the temp table BEFORE
+ * initializing TableScan object:
+ *      rm((preInitialization(leftIn, rightIn), RelationManager::instance())), tableScan(rm, tempTableName)
+ * rm will be initialized to RelationManager::instance() as usual, however, comma operator will make sure that
+ * preInitialization(leftIn, rightIn) will be called first in order to create the temp table.
+ * Very ingenious, right?
+ */
+INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition)
+            : rm((preInitialization(leftIn, rightIn), RelationManager::instance())), tableScan(rm, tempTableName) {
+
+    byte pageLeft[PAGE_SIZE];
+    byte pageRight[PAGE_SIZE];
+    while(leftIn->getNextTuple(pageLeft) != QE_EOF) {
+        vector<byte> extractedConditionField;
+        RC rc = extractField(pageLeft, leftAttrs, condition.lhsAttr, extractedConditionField);
+        if(rc != 0) {
+            return;
+        }
+
+        rightIn->setIterator(extractedConditionField.data(), extractedConditionField.data(), true, true);
+        while(rightIn->getNextTuple(pageRight) != QE_EOF) {
+            vector<byte> concatenatedRecords;
+            concatenateRecords(pageLeft, leftAttrs, pageRight, rightAttrs, concatenatedRecords);
+
+            RID dummyRID;
+            rc = rm.insertTuple(tempTableName, concatenatedRecords.data(), dummyRID);
+            if(rc != 0) {
+                return;
+            }
+        }
+    }
+}
+
+void INLJoin::preInitialization(Iterator *leftIn, IndexScan *rightIn) {
     left = leftIn;
     right = rightIn;
-
     tempTableName = "temp_"+to_string(time(NULL));
-    left->getAttributes(attrs);
-    vector<Attribute> rightAttrs;
+
+    left->getAttributes(leftAttrs);
     right->getAttributes(rightAttrs);
+    for(auto& attribute : leftAttrs)
+        attrs.push_back(attribute);
     for(auto& attribute : rightAttrs)
         attrs.push_back(attribute);
 
-    RC rc = rm.createTable(tempTableName, attrs);
-    if(rc != 0) {
-        return;
+    rm.createTable(tempTableName, attrs);   //unfortunately, due to design, we cannot test if this is != 0
+}
+
+RC INLJoin::extractField(const byte* record, const std::vector<Attribute> &attrs, const string& fieldToExtract, vector<byte>& extractedField) {
+    extractedField.clear();
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attrs.size()/8.0));
+    const byte* actualData = reinterpret_cast<const byte*>(record) + nullInfoFieldLength;
+
+    for(unsigned i = 0 ; i < attrs.size() ; ++i) {
+        const byte *byteInNullInfoField = reinterpret_cast<const byte*>(record) + i / 8;
+
+        bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+        if (!nullField) {
+            if(attrs[i].name == fieldToExtract) {
+                if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
+                    extractedField.insert(extractedField.end(), actualData, actualData + attrs[i].length);
+                } else { //recordDescriptor[i].type == AttrType::TypeVarChar
+                    unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData);
+                    extractedField.insert(extractedField.end(), actualData, actualData + 4 + varCharLength);
+                }
+                return 0;
+            }
+
+            if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
+                actualData += attrs[i].length;
+            } else { //recordDescriptor[i].type == AttrType::TypeVarChar
+                unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData);
+                actualData += (4 + varCharLength);
+            }
+        }
     }
+    return -1;
+}
 
+void INLJoin::concatenateRecords(const byte* firstRecord, const std::vector<Attribute> &firstRecordAttrs,
+                                const byte* secondRecord, const std::vector<Attribute> &secondRecordAttrs,
+                                vector<byte>& result) {
+    unsigned nullInfoFieldLength = static_cast<unsigned>(ceil((firstRecordAttrs.size()+secondRecordAttrs.size())/8.0));
+    result.clear();
+    result.resize(nullInfoFieldLength, 0);
 
+    const byte* records[2] = { firstRecord, secondRecord };
+
+    const byte* actualData[2];
+    nullInfoFieldLength = static_cast<unsigned>(ceil(firstRecordAttrs.size()/8.0));
+    actualData[0] = reinterpret_cast<const byte*>(firstRecord) + nullInfoFieldLength;
+    nullInfoFieldLength = static_cast<unsigned>(ceil(secondRecordAttrs.size()/8.0));
+    actualData[1] = reinterpret_cast<const byte*>(secondRecord) + nullInfoFieldLength;
+
+    //array of pointers in order to avoid copying two vectors
+    const std::vector<Attribute>* attributes[2] = { &firstRecordAttrs, &secondRecordAttrs };
+
+    for(unsigned record = 0, resultFieldNo = 0 ; record < 2 ; ++record) {
+        for(unsigned i = 0 ; i < attributes[record]->size() ; ++i, ++resultFieldNo) {
+            const byte *byteInNullInfoField = reinterpret_cast<const byte*>(records[record]) + i / 8;
+
+            bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+            if (!nullField) {
+                if ((*attributes[record])[i].type == AttrType::TypeInt || (*attributes[record])[i].type == AttrType::TypeReal) {
+                    result.insert(result.end(), actualData[record], actualData[record] + (*attributes[record])[i].length);
+
+                    actualData[record] += (*attributes[record])[i].length;
+                } else { //type == AttrType::TypeVarChar
+                    unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData[record]);
+                    result.insert(result.end(), actualData[record], actualData[record] + 4 + varCharLength);
+
+                    actualData[record] += (4 + varCharLength);
+                }
+            }
+            else {
+                unsigned noOfByteInNullInfoField = resultFieldNo/8;
+                result[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
+            }
+        }
+    }
 }
 
 INLJoin::~INLJoin() {
@@ -590,7 +694,7 @@ INLJoin::~INLJoin() {
 }
 
 RC INLJoin::getNextTuple(void *data) {
-
+    return tableScan.getNextTuple(data);
 }
 
 void INLJoin::getAttributes(std::vector<Attribute> &attrs) const {
