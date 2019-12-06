@@ -4,6 +4,7 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
+#include <ctime>
 
 using namespace std;
 
@@ -563,4 +564,41 @@ void BNLJoin::getAttributes(std::vector<Attribute> &attrs) const {
 
 	for(auto attribute : rightAttrs)
 		attrs.push_back(attribute);
+}
+
+INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition) : rm(RelationManager::instance()) {
+    left = leftIn;
+    right = rightIn;
+
+    tempTableName = "temp_"+to_string(time(NULL));
+    left->getAttributes(attrs);
+    vector<Attribute> rightAttrs;
+    right->getAttributes(rightAttrs);
+    for(auto& attribute : rightAttrs)
+        attrs.push_back(attribute);
+
+    RC rc = rm.createTable(tempTableName, attrs);
+    if(rc != 0) {
+        return;
+    }
+
+
+}
+
+INLJoin::~INLJoin() {
+    rm.deleteTable(tempTableName);
+}
+
+RC INLJoin::getNextTuple(void *data) {
+
+}
+
+void INLJoin::getAttributes(std::vector<Attribute> &attrs) const {
+    attrs.clear();
+    left->getAttributes(attrs);
+    vector<Attribute> rightAttrs;
+    right->getAttributes(rightAttrs);
+
+    for(auto& attribute : rightAttrs)
+        attrs.push_back(attribute);
 }
