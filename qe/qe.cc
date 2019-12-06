@@ -4,6 +4,7 @@
 #include <cmath>
 #include <algorithm>
 #include <vector>
+#include <climits>
 
 using namespace std;
 
@@ -163,63 +164,6 @@ void Project::preprocess(char *pre,char *post){
 		}
 	}
 }
-
-/*
- * The following two functions are used to convert bw binary streams and iterable,where iterable is
- * a self-defined struct.
- * They are both used in external sort.
- * */
-/*void Project::convertBinaryToIterable(vector<iterable> &v,char *data){
-	unsigned freeSpaceOffset = *(unsigned *)(data+PAGE_SIZE-sizeof(unsigned));
-	unsigned slotSize = *(unsigned *)(data+PAGE_SIZE-2*sizeof(unsigned));
-	for(unsigned i = 0;i < slotSize;i++){
-		int recordOffset = *(unsigned *)(data+PAGE_SIZE-2*(i+2)*sizeof(unsigned));
-		int recordLen = *(unsigned *)(data+PAGE_SIZE-(2*i+3)*sizeof(unsigned));
-		/*
-		 * When the record has been deleted or is a tombstone,ignore it.
-		 * If a tombstone is read, multiple read of one record can occur.
-		 * *
-		if(recordOffset == -1 || recordLen == -1)
-			continue;
-		iterable current;
-		char *cur = data+recordOffset;
-		for(unsigned j = 0;j < projectedAttr.size()+1;j++){
-			current.offset.push_back(*(unsigned *)cur);
-			cur += sizeof(unsigned);
-		}
-		current.cont = cur;
-		current.len = recordLen-(projectedAttr.size()+1)*sizeof(unsigned);
-		current.attrs = projectedAttr;
-		v.push_back(current);
-	}
-}*/
-
-/*void Project::covertIterableToBinary(const vector<iterable> v,char *data){
-	unsigned freeSpaceOffset = *(unsigned *)(data+PAGE_SIZE-sizeof(unsigned));
-	unsigned slotSize = *(unsigned *)(data+PAGE_SIZE-2*sizeof(unsigned));
-	unsigned slotID = 0;
-	char *page = data;
-	for(unsigned i = 0;i < v.size();i++){
-		unsigned recordLen = v[i].len+v[i].offset.size()*sizeof(unsigned);
-		int *recordLenInd = (int *)(data+PAGE_SIZE-(2*i+3)*sizeof(unsigned));
-		int *recordOffsetInd = (int *)(data+PAGE_SIZE-2*(i+2)*sizeof(unsigned));
-		//Keep deleted slot and tombstone as in the past
-		while(*recordLenInd == -1 || *recordOffsetInd == -1){
-			recordLenInd += 2*sizeof(unsigned);
-			recordOffsetInd += 2*sizeof(unsigned);
-		}
-		char cur[recordLen];
-		for(unsigned j = 0;j < v[i].offset.size();j++){
-			memcpy(cur, (char *)(v[i].offset[j]), sizeof(unsigned));
-			cur += sizeof(unsigned);
-		}
-		memcpy(cur+v[i].offset.size()*sizeof(unsigned), v[i].cont, v[i].len);
-		memcpy(page, cur, recordLen);
-		*recordLenInd = recordLen;
-		*recordOffsetInd = page-data;
-		page += recordLen;
-	}
-}*/
 
 RC Project::getNextTuple(void *data){
 	char pre[PAGE_SIZE];
@@ -538,4 +482,85 @@ void BNLJoin::getAttributes(std::vector<Attribute> &attrs) const {
 
 	for(auto attribute : rightAttrs)
 		attrs.push_back(attribute);
+}
+
+Aggregate::Aggregate(Iterator *input,const Attribute &aggAttr,AggregateOp op){
+	it = input;
+	this->op = op;
+	it->getAttributes(attributes);
+	aggrAttr = aggAttr;
+	scanned = false;
+}
+
+RC Aggregate::getNextTuple(void *data){
+	if(!scanned){
+		float res = 0;
+		int cnt = 0;
+		if(op == MIN) res = INT_MAX;
+		if(op == MAX) res = INT_MIN;
+		while(it->getNextTuple(data) != QE_EOF){
+			unsigned nullFieldLen = (unsigned)ceil(attributes.size()/8.0);
+			char *cur = (char *)data+nullFieldLen;
+			for(unsigned i = 0;i < attributes.size();i++){
+				const char* nullByte = (char *)data + i/8;
+
+				bool nullField = *nullByte & (1 << 7-i%8);
+				if(!nullField && attributes[i].name == aggrAttr.name){
+					if(attributes[i].type == TypeInt){
+						switch(op){
+							case MIN: if(*(int *)cur < res) res = *(int *)cur;break;
+							case MAX: if(*(int *)cur > res) res = *(int *)cur;break;
+							case COUNT: res++;break;
+							case SUM: res += *(int *)cur;break;
+							case AVG: res += *(int *)cur;cnt++;break;
+						}
+					}else if(attributes[i].type == TypeReal){
+						switch(op){
+							case MIN: if(*(float *)cur < res) res = *(int *)cur;break;
+							case MAX: if(*(float *)cur > res) res = *(int *)cur;break;
+							case COUNT: res++;break;
+							case SUM: res += *(float *)cur;break;
+							case AVG: res += *(float *)cur;cnt++;break;
+						}
+					}
+					break;
+				}else if(!nullField){
+					if(attributes[i].type == TypeInt || attributes[i].type == TypeReal)
+						cur += sizeof(int);
+					else{
+						unsigned strLen = *(unsigned *)cur;
+						cur += strLen+sizeof(unsigned);
+					}
+				}
+			}
+		}
+
+		if(op == AVG)
+			res /= (float)cnt;
+		unsigned aggregateNullLen = 1;
+		memset((char *)data, 0, aggregateNullLen);
+		*(float *)((char *)data+1) = res;
+		scanned = true;
+		return 0;
+	}else{
+		return QE_EOF;
+	}
+}
+
+void Aggregate::setAttribute(Attribute &attrs) const{
+	switch(op){
+		case MIN: attrs.name = "MIN("+attrs.name;break;
+		case MAX: attrs.name = "MAX("+attrs.name;break;
+		case COUNT: attrs.name = "COUNT("+attrs.name;break;
+		case SUM: attrs.name = "SUM("+attrs.name;break;
+		case AVG: attrs.name = "AVG("+attrs.name;break;
+	}
+	attrs.name += ")";
+}
+
+void Aggregate::getAttributes(std::vector<Attribute> &attrs) const{
+	attrs = attributes;
+	for(int i = 0;i < attrs.size();i++)
+		if(attrs[i].name == aggrAttr.name)
+			setAttribute(attrs[i]);
 }
