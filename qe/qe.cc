@@ -527,7 +527,6 @@ RC Aggregate::getNextTuple(void *data){
 							case SUM: resInt += *(int *)cur;                            break;
 							case AVG: resInt += *(int *)cur; cnt++;                     break;
 						}
-						cout << "\tresInt="<<resInt<<"\n";
 					}else if(attributes[i].type == TypeReal && attributes[i].type == aggrAttr.type){
 						switch(op){
 							case MIN: if(*(float *)cur < resReal) resReal = *(float *)cur;  break;
@@ -554,7 +553,6 @@ RC Aggregate::getNextTuple(void *data){
 			}
 		}
 		vector<byte> rawBytes(1, 0);
-        cout << "resInt="<<resInt<<"\n";
         float result;
 		if(op == COUNT) {
 		    result = cnt;
@@ -563,7 +561,6 @@ RC Aggregate::getNextTuple(void *data){
             if(aggrAttr.type == TypeInt) {
                 if(op == AVG)   result = resInt / (float)cnt;
                 else            result = resInt;
-                cout << "\tresult="<<result<<"\n";
             }
             else {
                 if(op == AVG)   result = resReal / cnt;
