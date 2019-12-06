@@ -32,7 +32,7 @@ RelationManager::RelationManager(const RelationManager &) = default;
 RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
 /******************************************************************************************************
-Tables (table-id:int, table-name:varchar(50), file-name:varchar(50), system-table:int
+Tables (table-id:int, table-name:varchar(50), file-name:varchar(50), system-table:int)
 ******************************************************************************************************/
 RC RelationManager::createTableDescriptor(){
     vector<string> fieldName = {"table-id","table-name","file-name","system-table"};

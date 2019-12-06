@@ -1,11 +1,11 @@
 #include "qe.h"
 #include <iostream>
-#include <typeinfo>
 #include <cmath>
-#include <algorithm>
 #include <vector>
-#include <ctime>
 #include <climits>
+#include <cfloat>
+#include <ctime>
+#include <sstream>
 
 using namespace std;
 
@@ -493,12 +493,24 @@ Aggregate::Aggregate(Iterator *input,const Attribute &aggAttr,AggregateOp op){
 	scanned = false;
 }
 
+Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) {
+
+}
+
 RC Aggregate::getNextTuple(void *data){
 	if(!scanned){
-		float res = 0;
+	    int resInt = 0;
+		float resReal = 0.0;
 		int cnt = 0;
-		if(op == MIN) res = INT_MAX;
-		if(op == MAX) res = INT_MIN;
+		if(op == MIN) {
+            resInt = INT_MAX;
+            resReal = FLT_MAX;
+		}
+		else if(op == MAX) {
+            resInt = INT_MIN;
+            resReal = FLT_MIN;
+		}
+
 		while(it->getNextTuple(data) != QE_EOF){
 			unsigned nullFieldLen = (unsigned)ceil(attributes.size()/8.0);
 			char *cur = (char *)data+nullFieldLen;
@@ -507,27 +519,33 @@ RC Aggregate::getNextTuple(void *data){
 
 				bool nullField = *nullByte & (1 << 7-i%8);
 				if(!nullField && attributes[i].name == aggrAttr.name){
-					if(attributes[i].type == TypeInt){
+					if(attributes[i].type == TypeInt && attributes[i].type == aggrAttr.type){
 						switch(op){
-							case MIN: if(*(int *)cur < res) res = *(int *)cur;break;
-							case MAX: if(*(int *)cur > res) res = *(int *)cur;break;
-							case COUNT: res++;break;
-							case SUM: res += *(int *)cur;break;
-							case AVG: res += *(int *)cur;cnt++;break;
+							case MIN: if(*(int *)cur < resInt) resInt = *(int *)cur;    break;
+							case MAX: if(*(int *)cur > resInt) resInt = *(int *)cur;    break;
+							case COUNT: cnt++;                                          break;
+							case SUM: resInt += *(int *)cur;                            break;
+							case AVG: resInt += *(int *)cur; cnt++;                     break;
 						}
-					}else if(attributes[i].type == TypeReal){
+						cout << "\tresInt="<<resInt<<"\n";
+					}else if(attributes[i].type == TypeReal && attributes[i].type == aggrAttr.type){
 						switch(op){
-							case MIN: if(*(float *)cur < res) res = *(int *)cur;break;
-							case MAX: if(*(float *)cur > res) res = *(int *)cur;break;
-							case COUNT: res++;break;
-							case SUM: res += *(float *)cur;break;
-							case AVG: res += *(float *)cur;cnt++;break;
+							case MIN: if(*(float *)cur < resReal) resReal = *(float *)cur;  break;
+							case MAX: if(*(float *)cur > resReal) resReal = *(float *)cur;  break;
+							case COUNT: cnt++;                                              break;
+							case SUM: resReal += *(float *)cur;                             break;
+							case AVG: resReal += *(float *)cur; cnt++;                      break;
 						}
 					}
 					break;
-				}else if(!nullField){
-					if(attributes[i].type == TypeInt || attributes[i].type == TypeReal)
-						cur += sizeof(int);
+				}
+				else if(!nullField){
+					if(attributes[i].type == TypeInt) {
+                        cur += sizeof(int);
+					}
+					else if(attributes[i].type == TypeReal) {
+                        cur += sizeof(float);
+					}
 					else{
 						unsigned strLen = *(unsigned *)cur;
 						cur += strLen+sizeof(unsigned);
@@ -535,12 +553,26 @@ RC Aggregate::getNextTuple(void *data){
 				}
 			}
 		}
+		vector<byte> rawBytes(1, 0);
+        cout << "resInt="<<resInt<<"\n";
+        float result;
+		if(op == COUNT) {
+		    result = cnt;
+		}
+		else {
+            if(aggrAttr.type == TypeInt) {
+                if(op == AVG)   result = resInt / (float)cnt;
+                else            result = resInt;
+                cout << "\tresult="<<result<<"\n";
+            }
+            else {
+                if(op == AVG)   result = resReal / cnt;
+                else            result = resReal;
+            }
+		}
 
-		if(op == AVG)
-			res /= (float)cnt;
-		unsigned aggregateNullLen = 1;
-		memset((char *)data, 0, aggregateNullLen);
-		*(float *)((char *)data+1) = res;
+        rawBytes.insert(rawBytes.end(), reinterpret_cast<byte*>(&result), reinterpret_cast<byte*>(&result)+sizeof(float));
+		memcpy(data, rawBytes.data(), rawBytes.size());
 		scanned = true;
 		return 0;
 	}else{
@@ -561,27 +593,45 @@ void Aggregate::setAttribute(Attribute &attrs) const{
 
 void Aggregate::getAttributes(std::vector<Attribute> &attrs) const{
 	attrs = attributes;
-	for(int i = 0;i < attrs.size();i++)
-		if(attrs[i].name == aggrAttr.name)
-			setAttribute(attrs[i]);
+
+	for(int i = 0;i < attrs.size();i++) {
+        if(attrs[i].name == aggrAttr.name) {
+            setAttribute(attrs[i]);
+            return;
+        }
+    }
 }
 
-/*
- * In this constructor's intializer list we use VERY tricky approach to create the temp table BEFORE
- * initializing TableScan object:
- *      rm((preInitialization(leftIn, rightIn), RelationManager::instance())), tableScan(rm, tempTableName)
- * rm will be initialized to RelationManager::instance() as usual, however, comma operator will make sure that
- * preInitialization(leftIn, rightIn) will be called first in order to create the temp table.
- * Very ingenious, right?
- */
-INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition)
-            : rm((preInitialization(leftIn, rightIn), RelationManager::instance())), tableScan(rm, tempTableName) {
+INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &condition) : rm(RelationManager::instance()) {
+    left = leftIn;
+    right = rightIn;
+
+    stringstream ss;
+    ss << time(nullptr);
+    tempTableName = "temp_"+ss.str();
+
+    left->getAttributes(leftAttrs);
+    right->getAttributes(rightAttrs);
+    vector<string> attrNames;
+    for(auto& attribute : leftAttrs) {
+        attrs.push_back(attribute);
+        attrNames.push_back(attribute.name);
+    }
+    for(auto& attribute : rightAttrs) {
+        attrs.push_back(attribute);
+        attrNames.push_back(attribute.name);
+    }
+
+    RC rc = rm.createTable(tempTableName, attrs);
+    if(rc != 0) {
+        return;
+    }
 
     byte pageLeft[PAGE_SIZE];
     byte pageRight[PAGE_SIZE];
     while(leftIn->getNextTuple(pageLeft) != QE_EOF) {
         vector<byte> extractedConditionField;
-        RC rc = extractField(pageLeft, leftAttrs, condition.lhsAttr, extractedConditionField);
+        rc = extractField(pageLeft, leftAttrs, condition.lhsAttr, extractedConditionField);
         if(rc != 0) {
             return;
         }
@@ -598,21 +648,8 @@ INLJoin::INLJoin(Iterator *leftIn, IndexScan *rightIn, const Condition &conditio
             }
         }
     }
-}
 
-void INLJoin::preInitialization(Iterator *leftIn, IndexScan *rightIn) {
-    left = leftIn;
-    right = rightIn;
-    tempTableName = "temp_"+to_string(time(NULL));
-
-    left->getAttributes(leftAttrs);
-    right->getAttributes(rightAttrs);
-    for(auto& attribute : leftAttrs)
-        attrs.push_back(attribute);
-    for(auto& attribute : rightAttrs)
-        attrs.push_back(attribute);
-
-    rm.createTable(tempTableName, attrs);   //unfortunately, due to design, we cannot test if this is != 0
+    rm.scan(tempTableName, "", NO_OP, NULL, attrNames, iter);
 }
 
 RC INLJoin::extractField(const byte* record, const std::vector<Attribute> &attrs, const string& fieldToExtract, vector<byte>& extractedField) {
@@ -690,19 +727,15 @@ void INLJoin::concatenateRecords(const byte* firstRecord, const std::vector<Attr
 }
 
 INLJoin::~INLJoin() {
+    iter.close();
     rm.deleteTable(tempTableName);
 }
 
 RC INLJoin::getNextTuple(void *data) {
-    return tableScan.getNextTuple(data);
+    RID dummyRid;
+    return iter.getNextTuple(dummyRid, data);
 }
 
 void INLJoin::getAttributes(std::vector<Attribute> &attrs) const {
-    attrs.clear();
-    left->getAttributes(attrs);
-    vector<Attribute> rightAttrs;
-    right->getAttributes(rightAttrs);
-
-    for(auto& attribute : rightAttrs)
-        attrs.push_back(attribute);
+    attrs = this->attrs;
 }
