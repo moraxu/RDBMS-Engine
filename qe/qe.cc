@@ -102,37 +102,20 @@ void Filter::getAttributes(std::vector<Attribute> &attrs) const {
 Project::Project(Iterator *input,const std::vector<std::string> &attrNames){
 	this->it = input;
 	this->projectedAttrName = attrNames;
-	getAttributes(this->projectedAttr);
-	this->tableName = "temp_"+to_string(time(NULL));
 
-	//Create projection file and insert unsorted projected tuple into it.
-	RID rid;
-	char data[PAGE_SIZE],postProcessed[PAGE_SIZE];
-	RelationManager& rm = RelationManager::instance();
-	int rc = rm.createFile(tableName);
-	if(rc != 0)
-		return;
-	while(it->getNextTuple(data) != QE_EOF){
-		preprocess(data,postProcessed);
-		int rc = rm.insertTuple(tableName, postProcessed, rid);
-		if(rc != 0)
-			return;
+	// Initialize projected attribute vector
+	projectedAttr.clear();
+	vector<Attribute> allAttrs;
+	it->getAttributes(allAttrs);
+	for(int i = 0;i < projectedAttrName.size();i++){
+		for(int j = 0;j < allAttrs.size();j++){
+			if(allAttrs[j].name == projectedAttrName[i]){
+				projectedAttr.push_back(allAttrs[j]);
+			}
+		}
 	}
-
-	FileHandle fileHandle;
-	rm.openFile(tableName, fileHandle);
-
-	unsigned pageNo = fileHandle.getNumberOfPages();
-	for(unsigned i = 0;i < pageNo;i++){
-		char data[PAGE_SIZE];
-		fileHandle.readPage(i,data);
-		//Sort
-		vector<iterable> conv;
-		//convertBinaryToIterable(conv, data);
-		//sort(conv.begin(),conv.end());
-		//covertIterableToBinary(conv, data);
-		fileHandle.writePage(i,data);
-	}
+	//getAttributes(this->projectedAttr);
+	//cout<<"projectedAttr size:"<<projectedAttr.size()<<endl;
 }
 
 void Project::preprocess(char *pre,char *post){
@@ -164,6 +147,7 @@ void Project::preprocess(char *pre,char *post){
 	}
 
 	unsigned projectedNullFieldLen = (unsigned)(ceil(projectedAttr.size()/8.0));
+	memset(post, 0, projectedNullFieldLen); // By default no field is NULL
 	char *cur = post+projectedNullFieldLen;
 	for(int i = 0;i < projectedAttrName.size();i++){
 		for(int j = 0;j < allAttrs.size();j++){
@@ -247,16 +231,7 @@ RC Project::getNextTuple(void *data){
 }
 
 void Project::getAttributes(std::vector<Attribute> &attrs) const {
-	attrs.clear();
-	vector<Attribute> allAttrs;
-	it->getAttributes(allAttrs);
-	for(int i = 0;i < projectedAttrName.size();i++){
-		for(int j = 0;j < attrs.size();j++){
-			if(attrs[j].name == projectedAttrName[i]){
-				attrs.push_back(attrs[j]);
-			}
-		}
-	}
+	attrs = projectedAttr;
 }
 
 /*

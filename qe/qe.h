@@ -32,7 +32,7 @@ struct Condition {
     Value rhsValue;             // right-hand side value if bRhsIsAttr = FALSE
 };
 
-class iterable{
+/*class iterable{
 	char *cont;
 	unsigned len;
 	vector<unsigned> offset;
@@ -62,6 +62,7 @@ public:
 		return false;
 	}
 }; // This struct is used to convert binary streams of records into iterables so they can be sorted
+*/
 
 class Iterator {
     // All the relational operators and access methods are iterators.
