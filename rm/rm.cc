@@ -607,11 +607,12 @@ RC RelationManager::insertTuple(const std::string &tableName, const void *data, 
         return -4;
     }
 
-    return handleIndexesForInsertion(tableName, attrs, data, rid);
+   rc = handleIndexesForInsertion(tableName, attrs, data, rid);
+   return rc;
 }
 
 RC RelationManager::handleIndexesForInsertion(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, const RID &rid) {
-    int tableID = getIdFromTableName(tableName);
+	int tableID = getIdFromTableName(tableName);
     if(tableID < 1) {
         return -1;
     }
@@ -619,6 +620,7 @@ RC RelationManager::handleIndexesForInsertion(const std::string &tableName, cons
     for(int i = 0 ; i < attrs.size() ; ++i) {
         attributeNames.insert(attrs[i].name);
     }
+
     map<string, IndexAttributeInfo> indexAttributes;
     if(processIndexesForTable(tableID, attributeNames, indexAttributes) != 0) {
         return -1;
@@ -634,21 +636,28 @@ RC RelationManager::handleIndexesForInsertion(const std::string &tableName, cons
 
         bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
         if (!nullField && indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+        	//cout<<"attribute name as index key:"<<attrs[i].name<<endl;
             IXFileHandle ixFileHandle;
             RC rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+            //cout<<"Open file "<<indexAttributes[attrs[i].name].filename<<" return "<<rc<<endl;
             if(rc != 0) {
                 IndexManager::instance().closeFile(ixFileHandle);
                 return -1;
             }
+
             rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
+            //cout<<"insert rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
+            //cout<<"Insert return "<<rc<<endl;
             if(rc != 0) {
                 IndexManager::instance().closeFile(ixFileHandle);
                 return -1;
             }
+
             rc = IndexManager::instance().closeFile(ixFileHandle);
             if(rc != 0) {
                 return -1;
             }
+
 
             if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
                 actualData += attrs[i].length;
@@ -834,6 +843,7 @@ RC RelationManager::handleIndexesForUpdate(const std::string &tableName, const s
     if(processIndexesForTable(tableID, attributeNames, indexAttributes) != 0) {
         return -1;
     }
+    cout<<"Number of matched indexes:"<<indexAttributes.size()<<endl;
 
     byte previousData[PAGE_SIZE];
     RC rc = readTuple(tableName, rid, previousData);
@@ -1007,6 +1017,7 @@ RC RelationManager::processIndexesForTable(const unsigned &tableID, const std::s
         return -1;
     }
 
+    //cout<<"In processIndexesForTable():"<<endl;
     byte page[PAGE_SIZE];
     RID rid;
     RBFM_ScanIterator it;
@@ -1021,17 +1032,14 @@ RC RelationManager::processIndexesForTable(const unsigned &tableID, const std::s
         unsigned attributeNameLen = *(unsigned *)cur;
         cur += sizeof(unsigned);
         string readAttributeName = string((char *)cur,attributeNameLen);
-        /*cout<<"attributeNameLen:"<<attributeNameLen<<endl;
-        cout<<"In Indexes CATALOG: current entry-> "<<readAttributeName<<" search attribute set:";
-        for(auto it = attributeNames.begin();it != attributeNames.end();it++)
-        	cout<<*it<<" ";
-        cout<<endl;*/
+        //cout<<"Process attribute:"<<readAttributeName<<endl;
         if(attributeNames.find(readAttributeName) != attributeNames.end()) {
             cur += attributeNameLen;
 
             unsigned fileNameLen = *(unsigned *)cur;
             cur += sizeof(unsigned);
             string fileName = string((char *)cur,fileNameLen);
+            //cout<<"filename:"<<fileName<<endl;
 
             attributes[readAttributeName] = IndexAttributeInfo{rid, fileName};
         }
@@ -1072,22 +1080,24 @@ RC RelationManager::createIndex(const std::string &tableName, const std::string 
     }
 
     std::vector<Attribute> attrs;
-    rc = getAttributes(tableName, attrs);
-    if(rc != 0) {
-        return -1;
-    }
-    Attribute attr;
-    for(int i = 0 ; i < attrs.size() ; ++i) {
-        if(attrs[i].name == attributeName) {
-            attr = attrs[i];
-        }
-    }
+	rc = getAttributes(tableName, attrs);
+	if(rc != 0) {
+		return -1;
+	}
+	Attribute attr;
+	for(int i = 0 ; i < attrs.size() ; ++i) {
+		if(attrs[i].name == attributeName) {
+			attr = attrs[i];
+		}
+	}
 
     //Populate index based on existing records in the given table
     byte page[PAGE_SIZE];
     RID rid;
     RM_ScanIterator tableIt;
-    std::vector<string> projectedAttr = {attributeName};
+    //std::vector<string> projectedAttr = {attributeName};
+    vector<string> projectedAttr;
+    projectedAttr.push_back(attributeName);
     scan(tableName, "", NO_OP, NULL, projectedAttr, tableIt);
 
     IXFileHandle ixFileHandle;
