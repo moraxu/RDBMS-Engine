@@ -107,8 +107,6 @@ RC privateTestCase_2() {
 int main() {
     // Tables created: left2
     // Indexes created: left2.B
-	RelationManager &rm = RelationManager::instance();
-	rm.deleteTable("left2");
 
     if (createLeftTable2() != success) {
         std::cerr << "***** [FAIL] QE Private Test Case 2 failed. *****" << std::endl;

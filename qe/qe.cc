@@ -191,19 +191,39 @@ BNLJoin::BNLJoin(Iterator *leftIn,TableScan *rightIn,const Condition &condition,
 	right->getAttributes(rightAttrs);
 	getAttributes(attrs);
 	bufferPage = numPages;
-	leftTable = (char *)malloc(bufferPage*PAGE_SIZE);
-	rightTable = (char *)malloc(PAGE_SIZE);
+	//leftTable = (char *)malloc(bufferPage*PAGE_SIZE);
+	//rightTable = (char *)malloc(PAGE_SIZE);
+	leftTable = new char[bufferPage*PAGE_SIZE];
+	rightTable = new char[PAGE_SIZE];
 	currLOffset = 0;
 	currROffset = 0;
 	//rightRid = {0,0};
+	maxLeft = calcMaxLenOfTuple(leftAttrs);
+	maxRight = calcMaxLenOfTuple(rightAttrs);
 	loadLeftTable();
 	loadRightPage();
+	cerr<<maxLeft<<" "<<maxRight<<endl;
+	cerr<<leftOffset<<" "<<rightOffset<<endl;
 	endOfFile = false;
 }
 
 BNLJoin::~BNLJoin(){
-	free(leftTable);
-	free(rightTable);
+	//free(leftTable);
+	//free(rightTable);
+	delete [] leftTable;
+	delete [] rightTable;
+}
+
+unsigned BNLJoin::calcMaxLenOfTuple(vector<Attribute> attrs){
+	unsigned maxLen = 0;
+	for(int i = 0;i < attrs.size();i++){
+		if(leftAttrs[i].type == TypeInt || leftAttrs[i].type == TypeReal)
+			maxLen += sizeof(int);
+		else{
+			maxLen += 50+sizeof(unsigned);
+		}
+	}
+	return maxLen;
 }
 
 /*
@@ -213,7 +233,8 @@ BNLJoin::~BNLJoin(){
 RC BNLJoin::loadLeftTable(){
 	unsigned currLen = 0;
 	unsigned nullLen = ceil(leftAttrs.size()/8.0);
-	while(currLen < bufferPage*PAGE_SIZE){
+	while(currLen+maxLeft <= bufferPage*PAGE_SIZE){
+		//cerr<<"currLen+maxLeft:"<<currLen+maxLeft<<endl;
 		int rc = left->getNextTuple(leftTable+currLen);
 		if(rc != 0){
 			leftOffset = currLen;
@@ -242,7 +263,8 @@ RC BNLJoin::loadLeftTable(){
 RC BNLJoin::loadRightPage(){
 	unsigned currLen = 0;
 	unsigned nullLen = ceil(rightAttrs.size()/8.0);
-	while(currLen < PAGE_SIZE){
+	while(currLen+maxRight <= PAGE_SIZE){
+		//cerr<<"currLen+maxRight:"<<currLen+maxRight<<endl;
 		int rc = right->getNextTuple(rightTable+currLen);
 		if(rc != 0){
 			rightOffset = currLen;
@@ -304,11 +326,11 @@ RC BNLJoin::moveToNextMatchingPairs(const unsigned preLeftTupLen,const unsigned 
 		if(currLOffset >= leftOffset){
 			currLOffset = 0;
 			rc = loadRightPage();
-			cerr<<"Load next right table page returns "<<rc<<endl;
+			//cerr<<"Load next right table page returns "<<rc<<endl;
 			// If end of right table is reached,the next block of left table should be loaded.
 			if(rc != 0){
 				rc = loadLeftTable();
-				cerr<<"Load next left table buffer returns "<<rc<<endl;
+				//cerr<<"Load next left table buffer returns "<<rc<<endl;
 				if(rc == 0){
 					right->setIterator();
 					loadRightPage();
@@ -415,28 +437,28 @@ void BNLJoin::BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned
 	unsigned leftNullField = ceil(leftAttrs.size()/8.0);
 	unsigned rightNullField = ceil(rightAttrs.size()/8.0);
 	unsigned nullField = ceil((leftAttrs.size()+rightAttrs.size())/8.0); // Null field length of joined tuple
+	memset((char *)data, 0, nullField);
 	char *cur = (char *)data;
-	unsigned shiftBits = leftNullField*8-leftAttrs.size();
-	memcpy(cur, leftTable+currLOffset, leftNullField);
-	cur += leftNullField;
-	memcpy(cur, rightTable+currROffset, rightNullField);
-	/*
-	 * Now our task is to merge these two null fields in the scale of bits.
-	 * shiftBits gives the number of bits that right null field should (left)shift with.
-	 * But I'm not sure how to implement it.
-	 * */
-	char firstByte = *(rightTable+currROffset);
-	char mask = 0;
-	for(int i = 8-shiftBits;i < 8;i++)
-		mask += pow(2,i);
-	firstByte &= mask;
-	firstByte >>= shiftBits;
-	*(cur-1) |= firstByte;
-	for(int i = shiftBits;i < rightAttrs.size();i++){
-		const char* rightNullPointer = rightTable+currROffset + i/8;
-		bool nullField = *rightNullPointer & (1 << 7-i%8);
-		if(nullField)
-			*(cur+(i-shiftBits)/8) |= (1 << 7-(i+shiftBits)%8);
+	unsigned resultFieldNo = 0;
+
+	for(unsigned i = 0 ; i < leftAttrs.size() ; ++i, ++resultFieldNo) {
+		const byte *byteInNullInfoField = reinterpret_cast<const byte*>(leftTable+currLOffset) + i / 8;
+
+		bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+		if (nullField) {
+			unsigned noOfByteInNullInfoField = resultFieldNo/8;
+			cur[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
+		}
+	}
+
+	for(unsigned i = 0 ; i < rightAttrs.size() ; ++i, ++resultFieldNo) {
+		const byte *byteInNullInfoField = reinterpret_cast<const byte*>(rightTable+currROffset) + i / 8;
+
+		bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+		if (nullField) {
+			unsigned noOfByteInNullInfoField = resultFieldNo/8;
+			cur[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
+		}
 	}
 
 	cur = (char *)data+nullField;
@@ -453,7 +475,7 @@ RC BNLJoin::getNextTuple(void *data){
 	while(!BNLJoinMatch(leftTupleLen,rightTupleLen)){
 		int rc = moveToNextMatchingPairs(leftTupleLen,rightTupleLen);
 		if(rc != 0){
-			cerr<<"moveToNextMatchingPairs() returns "<<rc<<endl;
+			//cerr<<"moveToNextMatchingPairs() returns "<<rc<<endl;
 			return QE_EOF;
 		}
 	}

@@ -261,6 +261,8 @@ class BNLJoin : public Iterator {
 	unsigned currLOffset; // Current offset in page leftPageNum
 	unsigned rightOffset;
 	unsigned currROffset;
+	unsigned maxLeft;
+	unsigned maxRight;
 	bool endOfFile; // Used in getNextTuple() to help determine whether it should return QE_EOF
 	//RID rightRid; // Current rid of right table to be checked for joining
 
@@ -273,6 +275,8 @@ public:
     );
 
     ~BNLJoin() override;
+
+    unsigned calcMaxLenOfTuple(vector<Attribute> attrs);
 
     RC loadLeftTable();
 
