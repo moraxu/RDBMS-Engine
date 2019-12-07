@@ -85,7 +85,6 @@ RC privateTestCase_3() {
         count++;
     }
 
-    cout<<count<<endl;
     if (count != 1000) {
         std::cout << " ***** [FAIL] The number of result: " << count << " is not correct. ***** " << std::endl;
         rc = fail;

@@ -202,8 +202,8 @@ BNLJoin::BNLJoin(Iterator *leftIn,TableScan *rightIn,const Condition &condition,
 	maxRight = calcMaxLenOfTuple(rightAttrs);
 	loadLeftTable();
 	loadRightPage();
-	cerr<<maxLeft<<" "<<maxRight<<endl;
-	cerr<<leftOffset<<" "<<rightOffset<<endl;
+	//cerr<<maxLeft<<" "<<maxRight<<endl;
+	//cerr<<leftOffset<<" "<<rightOffset<<endl;
 	endOfFile = false;
 }
 
@@ -234,7 +234,6 @@ RC BNLJoin::loadLeftTable(){
 	unsigned currLen = 0;
 	unsigned nullLen = ceil(leftAttrs.size()/8.0);
 	while(currLen+maxLeft <= bufferPage*PAGE_SIZE){
-		//cerr<<"currLen+maxLeft:"<<currLen+maxLeft<<endl;
 		int rc = left->getNextTuple(leftTable+currLen);
 		if(rc != 0){
 			leftOffset = currLen;
@@ -264,7 +263,6 @@ RC BNLJoin::loadRightPage(){
 	unsigned currLen = 0;
 	unsigned nullLen = ceil(rightAttrs.size()/8.0);
 	while(currLen+maxRight <= PAGE_SIZE){
-		//cerr<<"currLen+maxRight:"<<currLen+maxRight<<endl;
 		int rc = right->getNextTuple(rightTable+currLen);
 		if(rc != 0){
 			rightOffset = currLen;
@@ -471,11 +469,16 @@ RC BNLJoin::getNextTuple(void *data){
 	// Match and join
 	unsigned leftTupleLen,rightTupleLen;
 	//cerr<<"endOfFile? "<<endOfFile<<endl;
-	if(endOfFile) return QE_EOF;
+	if(endOfFile){
+		//delete [] leftTable;
+		//delete [] rightTable;
+		return QE_EOF;
+	}
 	while(!BNLJoinMatch(leftTupleLen,rightTupleLen)){
 		int rc = moveToNextMatchingPairs(leftTupleLen,rightTupleLen);
 		if(rc != 0){
-			//cerr<<"moveToNextMatchingPairs() returns "<<rc<<endl;
+			//delete [] leftTable;
+			//delete [] rightTable;
 			return QE_EOF;
 		}
 	}

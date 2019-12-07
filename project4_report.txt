@@ -20,7 +20,9 @@ Columns(table-id:int, column-name:varchar(50), column-type:int, column-length:in
 
 3. Block Nested Loop Join (If you have implemented this feature)
 - Describe how your block nested loop join works (especially, how you manage the given buffers.)
-
+Originally we keep two dynamically allocated buffers inside Class BNLJoin and through getNextTuple() interface
+we can fill these buffers with tuples got from left and right iterator.
+To do block Nested Loop Join,for each left tuple,we scan the right buffer. If all tuples in left buffer have been checked for join condition,we read the next page of right iterator in; if all pages of right iterator have been read in, we read the next numPages pages of left iterator in. This process continues until all tuples of left iterator have been processed.
 
 4. Index Nested Loop Join (If you have implemented this feature)
 - Describe how your index nested loop works.

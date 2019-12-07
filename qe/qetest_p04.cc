@@ -75,8 +75,6 @@ RC privateTestCase_4() {
         // right.D
         rd = *(int *) ((char *) data + offset);
 
-        std::cerr << "count:" << actualResultCnt << " lA:" << la << " lB:" << lb << " lC:" << lc << " rB:" << valueB
-                              << " rC:" << rC << " rD:" << rd << std::endl;
         if (valueB < 20 || valueB > 1109) {
             std::cerr << "***** [FAIL] Incorrect value: " << valueB << " returned. *****" << std::endl;
             std::cerr << "count:" << actualResultCnt << " lA:" << la << " lB:" << lb << " lC:" << lc << " rB:" << valueB
@@ -87,7 +85,7 @@ RC privateTestCase_4() {
 
         memset(data, 0, bufSize);
     }
-    cerr<<expectedResultCnt<<" "<<actualResultCnt<<endl;
+
     if (expectedResultCnt != actualResultCnt) {
         std::cerr << " ***** Expected Result Count: " << expectedResultCnt << std::endl;
         std::cerr << " ***** [FAIL] The number of result: " << actualResultCnt << " is not correct. ***** "
