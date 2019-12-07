@@ -461,7 +461,7 @@ void BNLJoin::BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned
 		}
 	}
 
-	cur = (char *)data+nullField;
+	cur += nullField;
 	memcpy(cur, leftTable+currLOffset+leftNullField, leftTupleLen-leftNullField);
 	cur += leftTupleLen-leftNullField;
 	memcpy(cur, rightTable+currROffset+rightNullField, rightTupleLen-rightNullField);
