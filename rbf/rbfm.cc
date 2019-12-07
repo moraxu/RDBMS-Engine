@@ -529,9 +529,10 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
     rbfm_ScanIterator.setConditionAttribute(conditionAttribute);
     rbfm_ScanIterator.setCompOp(compOp);
     rbfm_ScanIterator.setValue(value);
+    rbfm_ScanIterator.setCurrRID();
 
     //some preprocessing
-    std::map<string,int> namesToPos;
+    std::map<string,unsigned> namesToPos;
     for(int i = 0 ; i < recordDescriptor.size() ; ++i) {
         namesToPos[recordDescriptor[i].name] = i;
         if (recordDescriptor[i].name == conditionAttribute) {

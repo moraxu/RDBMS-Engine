@@ -110,6 +110,7 @@ public:
         iter->close();
         delete iter;
         iter = new RM_ScanIterator();
+        //cerr<<"Use rm scan to init..."<<endl;
         rm.scan(tableName, "", NO_OP, NULL, attrNames, *iter);
     };
 

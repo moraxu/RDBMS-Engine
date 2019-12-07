@@ -155,18 +155,20 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
         return -1;
     }
 
-    byte page[sizeof(unsigned)+1];
+    //byte page[sizeof(unsigned)+1];
+    byte page[PAGE_SIZE];
     RID rid;
 
     vector<byte> stringValue;
     unsigned stringLen = tableName.length();
     byte* stringLenPtr = reinterpret_cast<byte*>(&stringLen);
-    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.data());
+    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.c_str());
     stringValue.insert(stringValue.end(), stringLenPtr, stringLenPtr+sizeof(unsigned));
     stringValue.insert(stringValue.end(), stringContPtr, stringContPtr+stringLen);
 
     RBFM_ScanIterator it;
-    std::vector<string> attr = {"table-id"};
+    std::vector<string> attr;
+    attr.push_back("table-id");
     RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,stringValue.data(),attr,it);
 
     if(it.getNextRecord(rid,page) != RBFM_EOF){

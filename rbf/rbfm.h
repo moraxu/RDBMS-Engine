@@ -96,6 +96,14 @@ public:
         RBFM_ScanIterator::conditionAttribute = conditionAttribute;
     }
 
+    void setCurrRID(){
+    	currRID = {0,0};
+    }
+
+    RID &getCurrRID(){
+    	return currRID;
+    }
+
     CompOp getCompOp() const {
         return compOp;
     }

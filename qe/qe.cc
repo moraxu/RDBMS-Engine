@@ -201,8 +201,8 @@ BNLJoin::BNLJoin(Iterator *leftIn,TableScan *rightIn,const Condition &condition,
 }
 
 BNLJoin::~BNLJoin(){
-	delete leftTable;
-	delete rightTable;
+	free(leftTable);
+	free(rightTable);
 }
 
 /*
@@ -303,11 +303,15 @@ RC BNLJoin::moveToNextMatchingPairs(const unsigned preLeftTupLen,const unsigned 
 		if(currLOffset >= leftOffset){
 			currLOffset = 0;
 			rc = loadRightPage();
+			cerr<<"Load next right table page returns "<<rc<<endl;
 			// If end of right table is reached,the next block of left table should be loaded.
 			if(rc != 0){
 				rc = loadLeftTable();
-				right->setIterator();
-				loadRightPage();
+				cerr<<"Load next left table buffer returns "<<rc<<endl;
+				if(rc == 0){
+					right->setIterator();
+					loadRightPage();
+				}
 			}
 		}
 	}
@@ -404,25 +408,6 @@ bool BNLJoin::BNLJoinMatch(unsigned &leftTupleLen,unsigned &rightTupleLen){
 	rightTupleLen = actualData-rightTable-currROffset;
 
 	return res;
-
-	/*unsigned rightTupleOffset = *(unsigned *)(rightTable+PAGE_SIZE-2*(rightRid.slotNum+2)*sizeof(unsigned));
-	char *rightTuple = rightTable+rightTupleOffset;
-	for(int i = 0;i < rightAttrs.size();i++){
-		if(rightAttrs[i].name == con.rhsAttr){
-			unsigned offset = *(unsigned *)(rightTuple+i*sizeof(unsigned));
-			if(rightAttrs[i].type == TypeInt){
-				ivalR = *(int *)(rightTuple+(rightAttrs.size()+1)*sizeof(unsigned)+offset);
-				return performOp(ivalL, ivalR);
-			}else if(rightAttrs[i].type == TypeReal){
-				fvalR = *(float *)(rightTuple+(rightAttrs.size()+1)*sizeof(unsigned)+offset);
-				return performOp(fvalL, fvalR);
-			}else{
-				unsigned tupleStrLen = *(unsigned *)(rightTuple+(rightAttrs.size()+2)*sizeof(unsigned)+offset);
-				strR = string(rightTuple+(rightAttrs.size()+2)*sizeof(unsigned)+offset,tupleStrLen);
-				return performOp(strL, strR);
-			}
-		}
-	}*/
 }
 
 void BNLJoin::BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned rightTupleLen){
@@ -462,11 +447,14 @@ void BNLJoin::BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned
 RC BNLJoin::getNextTuple(void *data){
 	// Match and join
 	unsigned leftTupleLen,rightTupleLen;
+	//cerr<<"endOfFile? "<<endOfFile<<endl;
 	if(endOfFile) return QE_EOF;
 	while(!BNLJoinMatch(leftTupleLen,rightTupleLen)){
 		int rc = moveToNextMatchingPairs(leftTupleLen,rightTupleLen);
-		if(rc != 0)
+		if(rc != 0){
+			cerr<<"moveToNextMatchingPairs() returns "<<rc<<endl;
 			return QE_EOF;
+		}
 	}
 
 	BNLJoinTuple(data,leftTupleLen,rightTupleLen);
@@ -490,6 +478,10 @@ Aggregate::Aggregate(Iterator *input,const Attribute &aggAttr,AggregateOp op){
 	it->getAttributes(attributes);
 	aggrAttr = aggAttr;
 	scanned = false;
+}
+
+Aggregate::Aggregate(Iterator *input,const Attribute &aggAttr,const Attribute &groupAttr,AggregateOp op){
+
 }
 
 RC Aggregate::getNextTuple(void *data){

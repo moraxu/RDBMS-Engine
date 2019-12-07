@@ -20,7 +20,7 @@ RC privateTestCase_4() {
     value1.type = TypeInt;
     value1.data = malloc(bufSize);
     *(int *) value1.data = 1109;
-    filterCond.rhsValue = value1;
+    filterCond.rhsValue = value1; // largeleft2.B <= 1109
 
     // Create Filter
     auto *filter = new Filter(leftIn, filterCond);
@@ -43,6 +43,7 @@ RC privateTestCase_4() {
     while (bnlJoin->getNextTuple(data) != QE_EOF) {
 
         actualResultCnt++;
+        //cout<<actualResultCnt<<endl;
         int offset = 1; // including nulls-indicator
 
         int la = 0;
@@ -74,6 +75,8 @@ RC privateTestCase_4() {
         // right.D
         rd = *(int *) ((char *) data + offset);
 
+        std::cerr << "count:" << actualResultCnt << " lA:" << la << " lB:" << lb << " lC:" << lc << " rB:" << valueB
+                              << " rC:" << rC << " rD:" << rd << std::endl;
         if (valueB < 20 || valueB > 1109) {
             std::cerr << "***** [FAIL] Incorrect value: " << valueB << " returned. *****" << std::endl;
             std::cerr << "count:" << actualResultCnt << " lA:" << la << " lB:" << lb << " lC:" << lc << " rB:" << valueB
@@ -84,7 +87,7 @@ RC privateTestCase_4() {
 
         memset(data, 0, bufSize);
     }
-
+    cerr<<expectedResultCnt<<" "<<actualResultCnt<<endl;
     if (expectedResultCnt != actualResultCnt) {
         std::cerr << " ***** Expected Result Count: " << expectedResultCnt << std::endl;
         std::cerr << " ***** [FAIL] The number of result: " << actualResultCnt << " is not correct. ***** "
@@ -103,6 +106,8 @@ RC privateTestCase_4() {
 int main() {
     // Tables created: largeright2
     // Indexes created: largeright2.B
+	RelationManager &rm = RelationManager::instance();
+	rm.deleteTable("largeright2");
 
     if (createLargeRightTable2() != success) {
         std::cerr << "***** [FAIL] QE Private Test Case 4 failed. *****" << std::endl;

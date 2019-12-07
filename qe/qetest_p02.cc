@@ -24,7 +24,7 @@ RC privateTestCase_2() {
     cond1.rhsValue = value1;
 
     // Create Filter
-    auto *filter1 = new Filter(ts, cond1);
+    auto *filter1 = new Filter(ts, cond1); // left2.B < 50
 
     auto *is = new IndexScan(rm, "left2", "B");
 
@@ -107,6 +107,8 @@ RC privateTestCase_2() {
 int main() {
     // Tables created: left2
     // Indexes created: left2.B
+	RelationManager &rm = RelationManager::instance();
+	rm.deleteTable("left2");
 
     if (createLeftTable2() != success) {
         std::cerr << "***** [FAIL] QE Private Test Case 2 failed. *****" << std::endl;
