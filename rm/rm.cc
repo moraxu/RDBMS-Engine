@@ -1,4 +1,5 @@
 #include "rm.h"
+#include "../ix/ix.h"
 #include <cmath>
 #include <iostream>
 
@@ -12,6 +13,7 @@ RelationManager &RelationManager::instance() {
 RelationManager::RelationManager(){
     createTableDescriptor();
     createColumnDescriptor();
+    createIndexDescriptor();
     lastTableID = 0;
     FileHandle fH;
     if(openFile("Tables", fH) == 0) {
@@ -22,7 +24,7 @@ RelationManager::RelationManager(){
 }
 
 RelationManager::~RelationManager() {
-    
+
 }
 
 RelationManager::RelationManager(const RelationManager &) = default;
@@ -30,7 +32,7 @@ RelationManager::RelationManager(const RelationManager &) = default;
 RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
 /******************************************************************************************************
-Tables (table-id:int, table-name:varchar(50), file-name:varchar(50), system-table:int
+Tables (table-id:int, table-name:varchar(50), file-name:varchar(50), system-table:int)
 ******************************************************************************************************/
 RC RelationManager::createTableDescriptor(){
     vector<string> fieldName = {"table-id","table-name","file-name","system-table"};
@@ -67,7 +69,26 @@ RC RelationManager::createColumnDescriptor(){
     return 0;
 }
 
-std::string RelationManager::getFileName(const std::string &tableName) {
+/******************************************************************************************************
+Indexes(table-id:int, attribute-name:varchar(50), file-name:varchar(50))
+******************************************************************************************************/
+RC RelationManager::createIndexDescriptor(){
+    vector<string> fieldName = {"table-id","attribute-name","file-name"};
+    vector<AttrType> type = {TypeInt,TypeVarChar,TypeVarChar};
+    vector<AttrLength> len = {sizeof(int),50,50};
+
+    for(int i = 0;i < fieldName.size();i++){
+        Attribute tmp;
+        tmp.name = fieldName[i];
+        tmp.type = type[i];
+        tmp.length = len[i];
+        indexesDescriptor.push_back(tmp);
+    }
+
+    return 0;
+}
+
+std::string RelationManager::getTableFilename(const std::string &tableName) {
     string res;
     byte page[PAGE_SIZE];
     RID rid;
@@ -95,14 +116,14 @@ std::string RelationManager::getFileName(const std::string &tableName) {
     }
     int rc = tableIt.close();
     if(rc != 0)
-       return string();
+        return string();
     return res;
 }
 
 RC RelationManager::openFile(const std::string &tableName,FileHandle &fileHandle){
     string fn;
-    if(tableName == "Tables" || tableName == "Columns") fn = tableName;
-    else fn = getFileName(tableName);
+    if(tableName == "Tables" || tableName == "Columns" || tableName == "Indexes") fn = tableName;
+    else fn = getTableFilename(tableName);
     //No such file associated with tableName
     if(fn.empty())
         return -1;
@@ -134,18 +155,20 @@ int RelationManager::getIdFromTableName(const std::string &tableName){
         return -1;
     }
 
-    byte page[sizeof(unsigned)+1];
+    //byte page[sizeof(unsigned)+1];
+    byte page[PAGE_SIZE];
     RID rid;
 
     vector<byte> stringValue;
     unsigned stringLen = tableName.length();
     byte* stringLenPtr = reinterpret_cast<byte*>(&stringLen);
-    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.data());
+    const byte* stringContPtr = reinterpret_cast<const byte*>(tableName.c_str());
     stringValue.insert(stringValue.end(), stringLenPtr, stringLenPtr+sizeof(unsigned));
     stringValue.insert(stringValue.end(), stringContPtr, stringContPtr+stringLen);
 
     RBFM_ScanIterator it;
-    std::vector<string> attr = {"table-id"};
+    std::vector<string> attr;
+    attr.push_back("table-id");
     RecordBasedFileManager::instance().scan(fh,tablesDescriptor,"table-name",EQ_OP,stringValue.data(),attr,it);
 
     if(it.getNextRecord(rid,page) != RBFM_EOF){
@@ -181,12 +204,12 @@ RC RelationManager::insertCatalogTableTuple(const std::string &tableName, const 
 
     return closeFile(fh);
 }
- 
+
 /* NOTE *************************************************************************************************************
-createTableTableRow and createColumnTableRow methods transform rows to be inserted into Table/Column catalog tables
- into raw std::vector<byte>& bytesToWrite data. I could have supply a helper function that would append at the end of
- such vector either unsigned or string field, in order to minimalize the use of pointers, but didn't have time
- for this change right now, it's not that important
+ createTableTableRow, createColumnTableRow and createIndexTableRow methods transform rows to be inserted into
+ Table/Column/Index catalog tables into raw std::vector<byte>& bytesToWrite data. I could have supply a helper
+ function that would append at the end of such vector either unsigned or string field, in order to minimalize
+ the use of pointers, but didn't have time for this change right now, it's not that important
  ********************************************************************************************************************/
 void RelationManager::createTableTableRow(const unsigned& tableID, const std::string& tableName, std::vector<byte>& bytesToWrite, bool systemTable) {
     //Null field at the beginning
@@ -245,12 +268,36 @@ void RelationManager::createColumnTableRow(const unsigned& tableID, const Attrib
     const byte* colPosPtr = reinterpret_cast<const byte*>(&colPos);
     bytesToWrite.insert(bytesToWrite.end(), colPosPtr, colPosPtr + sizeof(colPos));
 }
+void RelationManager::createIndexTableRow(const unsigned& tableID, const std::string& attributeName, const std::string& filename, std::vector<byte>& bytesToWrite) {
+    //Null field at the beginning
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(indexesDescriptor.size()/8.0));
+    vector<byte> emptyBytes(nullInfoFieldLength);
+    bytesToWrite.insert(bytesToWrite.end(), emptyBytes.begin(), emptyBytes.end());
+
+    //Table ID
+    const byte* tableIDPtr = reinterpret_cast<const byte*>(&tableID);
+    bytesToWrite.insert(bytesToWrite.end(), tableIDPtr, tableIDPtr + sizeof(lastTableID));
+
+    //Attribute name + filename
+    const std::string names[2] = { attributeName, filename };
+    for(int i = 0 ; i < 2 ; ++i) {
+        unsigned nameLength = names[i].length();
+        const byte* nameLengthPtr = reinterpret_cast<const byte*>(&nameLength);
+        const byte* namePtr = reinterpret_cast<const byte*>(names[i].c_str());
+
+        bytesToWrite.insert(bytesToWrite.end(), nameLengthPtr, nameLengthPtr + sizeof(nameLength));
+        bytesToWrite.insert(bytesToWrite.end(), namePtr, namePtr + nameLength);
+    }
+}
 
 RC RelationManager::createCatalog() {
     if(PagedFileManager::instance().createFile("Tables") != 0) {
         return -1;
     }
     if(RecordBasedFileManager::instance().createFile("Columns") != 0) {
+        return -1;
+    }
+    if(RecordBasedFileManager::instance().createFile("Indexes") != 0) {
         return -1;
     }
 
@@ -260,6 +307,11 @@ RC RelationManager::createCatalog() {
     }
 
     rc = createTableHelper("Columns", columnDescriptor,true);
+    if(rc != 0) {
+        return  rc;
+    }
+
+    rc = createTableHelper("Indexes", indexesDescriptor,true);
     if(rc != 0) {
         return  rc;
     }
@@ -278,6 +330,9 @@ RC RelationManager::deleteCatalog() {
         return -1;
     }
     if(RecordBasedFileManager::instance().destroyFile("Columns") != 0) {
+        return -1;
+    }
+    if(RecordBasedFileManager::instance().destroyFile("Indexes") != 0) {
         return -1;
     }
     return 0;
@@ -305,8 +360,8 @@ RC RelationManager::createTable(const std::string &tableName, const std::vector<
 RC RelationManager::createTableHelper(const std::string &tableName, const std::vector<Attribute> &attrs, bool isSystemTable) {
     std::vector<byte> bytesToWrite;
     createTableTableRow(++lastTableID, tableName, bytesToWrite, isSystemTable);
-    RID rid;
-    RC rc = insertCatalogTableTuple("Tables", tablesDescriptor, bytesToWrite.data(), rid);
+    RID dummyRID; //dummy RID, we don't need it
+    RC rc = insertCatalogTableTuple("Tables", tablesDescriptor, bytesToWrite.data(), dummyRID);
     if(rc != 0) {
         return  rc;
     }
@@ -314,7 +369,7 @@ RC RelationManager::createTableHelper(const std::string &tableName, const std::v
     for(unsigned i = 0 ; i < attrs.size() ; ++i) {
         bytesToWrite.clear();
         createColumnTableRow(lastTableID, attrs[i], i+1, bytesToWrite);
-        rc = insertCatalogTableTuple("Columns", columnDescriptor, bytesToWrite.data(), rid);
+        rc = insertCatalogTableTuple("Columns", columnDescriptor, bytesToWrite.data(), dummyRID);
         if(rc != 0) {
             return  rc;
         }
@@ -372,7 +427,15 @@ RC RelationManager::deleteTable(const std::string &tableName) {
     std::vector<Attribute> attrs;
     rc = getAttributes(tableName, attrs);
     if(rc != 0) {
-        return rc;
+        return -1;
+    }
+
+    std::set<std::string> attributeNames;
+    for(int i = 0 ; i < attrs.size() ; ++i) {
+        attributeNames.insert(attrs[i].name);
+    }
+    if(destroyIndexes(tableID, attributeNames) == -2) {
+        return -1;
     }
 
     if(PagedFileManager::instance().destroyFile(tableName) != 0) {
@@ -451,6 +514,10 @@ RC RelationManager::getAttributes(const std::string &tableName, std::vector<Attr
     }
     if(tableName == string("Columns")){
         attrs = columnDescriptor;
+        return 0;
+    }
+    if(tableName == string("Indexes")){
+        attrs = indexesDescriptor;
         return 0;
     }
 
@@ -542,6 +609,68 @@ RC RelationManager::insertTuple(const std::string &tableName, const void *data, 
         return -4;
     }
 
+   rc = handleIndexesForInsertion(tableName, attrs, data, rid);
+   return rc;
+}
+
+RC RelationManager::handleIndexesForInsertion(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, const RID &rid) {
+	int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return -1;
+    }
+    std::set<std::string> attributeNames;
+    for(int i = 0 ; i < attrs.size() ; ++i) {
+        attributeNames.insert(attrs[i].name);
+    }
+
+    map<string, IndexAttributeInfo> indexAttributes;
+    if(processIndexesForTable(tableID, attributeNames, indexAttributes) != 0) {
+        return -1;
+    }
+
+    //Once we have "attributes" map initialized with keys being attribute names for which indexes exist,
+    //we iterate through fields to check if an index is created on some of them
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attrs.size()/8.0));
+    const byte* actualData = reinterpret_cast<const byte*>(data) + nullInfoFieldLength;
+
+    for(unsigned i = 0 ; i < attrs.size() ; ++i) {
+        const byte *byteInNullInfoField = reinterpret_cast<const byte *>(data) + i / 8;
+
+        bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+        if (!nullField) {
+        	if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                //cout<<"attribute name as index key:"<<attrs[i].name<<endl;
+                IXFileHandle ixFileHandle;
+                RC rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                //cout<<"Open file "<<indexAttributes[attrs[i].name].filename<<" return "<<rc<<endl;
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+
+                rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
+                //cout<<"insert rid:"<<rid.pageNum<<" "<<rid.slotNum<<endl;
+                //cout<<"Insert return "<<rc<<endl;
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
+        	}
+
+            if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
+                actualData += attrs[i].length;
+            } else { //recordDescriptor[i].type == AttrType::TypeVarChar
+                unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData);
+                actualData += (4 + varCharLength);
+            }
+        }
+    }
+
     return 0;
 }
 
@@ -571,6 +700,11 @@ RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
         return -2;
     }
 
+    rc = handleIndexesForDeletion(tableName, attrs, rid);
+    if(rc != 0) {
+        return -1;
+    }
+
     FileHandle fh;
     rc = openFile(tableName,fh);
     if(rc != 0) {
@@ -586,6 +720,65 @@ RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
     rc = closeFile(fh);
     if(rc != 0) {
         return -4;
+    }
+
+    return 0;
+}
+
+RC RelationManager::handleIndexesForDeletion(const std::string &tableName, const std::vector<Attribute> &attrs, const RID &rid) {
+    int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return -1;
+    }
+    std::set<std::string> attributeNames;
+    for(int i = 0 ; i < attrs.size() ; ++i) {
+        attributeNames.insert(attrs[i].name);
+    }
+    map<string, IndexAttributeInfo> indexAttributes;
+    if(processIndexesForTable(tableID, attributeNames, indexAttributes) != 0) {
+        return -1;
+    }
+
+    byte data[PAGE_SIZE];
+    RC rc = readTuple(tableName, rid, data);
+    if(rc != 0) {
+        return -1;
+    }
+    //Once we have "attributes" map initialized with keys being attribute names for which indexes exist,
+    //we iterate through fields to check if an index is created on some of them
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attrs.size()/8.0));
+    const byte* actualData = reinterpret_cast<const byte*>(data) + nullInfoFieldLength;
+
+    for(unsigned i = 0 ; i < attrs.size() ; ++i) {
+        const byte *byteInNullInfoField = reinterpret_cast<const byte *>(data) + i / 8;
+
+        bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+        if (!nullField) {
+            if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                IXFileHandle ixFileHandle;
+                rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().deleteEntry(ixFileHandle, attrs[i], actualData, rid);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
+            }
+
+            if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
+                actualData += attrs[i].length;
+            } else { //recordDescriptor[i].type == AttrType::TypeVarChar
+                unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData);
+                actualData += (4 + varCharLength);
+            }
+        }
     }
 
     return 0;
@@ -617,6 +810,11 @@ RC RelationManager::updateTuple(const std::string &tableName, const void *data, 
         return -2;
     }
 
+    rc = handleIndexesForUpdate(tableName, attrs, data, rid);
+    if(rc != 0) {
+        return -1;
+    }
+
     FileHandle fh;
     rc = openFile(tableName,fh);
     if(rc != 0) {
@@ -632,6 +830,101 @@ RC RelationManager::updateTuple(const std::string &tableName, const void *data, 
     rc = closeFile(fh);
     if(rc != 0) {
         return -4;
+    }
+
+    return 0;
+}
+
+RC RelationManager::handleIndexesForUpdate(const std::string &tableName, const std::vector<Attribute> &attrs, const void *data, const RID &rid) {
+    int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return -1;
+    }
+    std::set<std::string> attributeNames;
+    for(int i = 0 ; i < attrs.size() ; ++i) {
+        attributeNames.insert(attrs[i].name);
+    }
+    map<string, IndexAttributeInfo> indexAttributes;
+    if(processIndexesForTable(tableID, attributeNames, indexAttributes) != 0) {
+        return -1;
+    }
+    cout<<"Number of matched indexes:"<<indexAttributes.size()<<endl;
+
+    byte previousData[PAGE_SIZE];
+    RC rc = readTuple(tableName, rid, previousData);
+    if(rc != 0) {
+        return -1;
+    }
+    //Once we have "attributes" map initialized with keys being attribute names for which indexes exist,
+    //we iterate through fields to check if an index is created on some of them
+    const unsigned nullInfoFieldLength = static_cast<unsigned>(ceil(attrs.size()/8.0));
+    const byte* actualData = reinterpret_cast<const byte*>(previousData) + nullInfoFieldLength;
+
+    for(unsigned i = 0 ; i < attrs.size() ; ++i) {
+        const byte *byteInNullInfoField = reinterpret_cast<const byte *>(previousData) + i / 8;
+
+        bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+        if (!nullField) {
+            if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                IXFileHandle ixFileHandle;
+                rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().deleteEntry(ixFileHandle, attrs[i], actualData, rid);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
+            }
+
+            if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
+                actualData += attrs[i].length;
+            } else { //recordDescriptor[i].type == AttrType::TypeVarChar
+                unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData);
+                actualData += (4 + varCharLength);
+            }
+        }
+    }
+
+    //And now update part:
+    actualData = reinterpret_cast<const byte*>(data) + nullInfoFieldLength;
+
+    for(unsigned i = 0 ; i < attrs.size() ; ++i) {
+        const byte *byteInNullInfoField = reinterpret_cast<const byte *>(data) + i / 8;
+
+        bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+        if (!nullField) {
+            if(indexAttributes.find(attrs[i].name) != indexAttributes.end()) {
+                IXFileHandle ixFileHandle;
+                rc = IndexManager::instance().openFile(indexAttributes[attrs[i].name].filename, ixFileHandle);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().insertEntry(ixFileHandle, attrs[i], actualData, rid);
+                if(rc != 0) {
+                    IndexManager::instance().closeFile(ixFileHandle);
+                    return -1;
+                }
+                rc = IndexManager::instance().closeFile(ixFileHandle);
+                if(rc != 0) {
+                    return -1;
+                }
+            }
+
+            if (attrs[i].type == AttrType::TypeInt || attrs[i].type == AttrType::TypeReal) {
+                actualData += attrs[i].length;
+            } else { //recordDescriptor[i].type == AttrType::TypeVarChar
+                unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData);
+                actualData += (4 + varCharLength);
+            }
+        }
     }
 
     return 0;
@@ -715,7 +1008,53 @@ RC RelationManager::scan(const std::string &tableName,
         return -1;
     }
 
-    return RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
+    rc = RecordBasedFileManager::instance().scan(fh, attrs, conditionAttribute, compOp, value, attributeNames, rm_ScanIterator.getRbfmIt());
+    return rc;
+}
+
+/*
+ * This function searches in 'Indexes' CATALOG for entries
+ * satisfy: 'tableID' field = tableID in  and 'attribute-name' field in set 'attributeNames'.
+ * For most of the time this set only has one element in it,
+ * so this function performs single entry search; when we want to delete all the entries associated with certain table,
+ * this set includes all the attributes of corresponding data table.
+ * */
+RC RelationManager::processIndexesForTable(const unsigned &tableID, const std::set<std::string> &attributeNames, map<string, IndexAttributeInfo>& attributes) {
+    FileHandle fh;
+    RC rc = RecordBasedFileManager::instance().openFile("Indexes",fh);
+    if(rc != 0) {
+        return -1;
+    }
+
+    //cout<<"In processIndexesForTable():"<<endl;
+    byte page[PAGE_SIZE];
+    RID rid;
+    RBFM_ScanIterator it;
+    std::vector<string> attr = {"attribute-name","file-name"};
+    RecordBasedFileManager::instance().scan(fh,indexesDescriptor,"table-id", CompOp::EQ_OP, &tableID, attr, it);
+
+    while(it.getNextRecord(rid,page) != RBFM_EOF){
+        byte *cur = page;
+        unsigned nullFieldLen = ceil(attr.size()/8.0);
+        cur += nullFieldLen; // Null field and table id field
+
+        unsigned attributeNameLen = *(unsigned *)cur;
+        cur += sizeof(unsigned);
+        string readAttributeName = string((char *)cur,attributeNameLen);
+        //cout<<"Process attribute:"<<readAttributeName<<endl;
+        if(attributeNames.find(readAttributeName) != attributeNames.end()) {
+            cur += attributeNameLen;
+
+            unsigned fileNameLen = *(unsigned *)cur;
+            cur += sizeof(unsigned);
+            string fileName = string((char *)cur,fileNameLen);
+            //cout<<"filename:"<<fileName<<endl;
+
+            attributes[readAttributeName] = IndexAttributeInfo{rid, fileName};
+        }
+    }
+
+    return it.close();
 }
 
 // Extra credit work
@@ -728,5 +1067,159 @@ RC RelationManager::addAttribute(const std::string &tableName, const Attribute &
     return -1;
 }
 
+// QE IX related
+RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName) {
+    int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return -1;
+    }
 
+    //Our index files will have the following names: TableName_AttributeName
+    const string indexFileName = tableName + "_" + attributeName;
+    if(IndexManager::instance().createFile(indexFileName) != 0) {
+        return -1;
+    }
 
+    std::vector<byte> bytesToWrite;
+    createIndexTableRow(tableID, attributeName, indexFileName, bytesToWrite);
+    RID dummyRID; //dummy RID, we don't need it
+    RC rc = insertCatalogTableTuple("Indexes", indexesDescriptor, bytesToWrite.data(), dummyRID);
+    if(rc != 0) {
+        return -1;
+    }
+
+    std::vector<Attribute> attrs;
+	rc = getAttributes(tableName, attrs);
+	if(rc != 0) {
+		return -1;
+	}
+	Attribute attr;
+	for(int i = 0 ; i < attrs.size() ; ++i) {
+		if(attrs[i].name == attributeName) {
+			attr = attrs[i];
+		}
+	}
+
+    //Populate index based on existing records in the given table
+    byte page[PAGE_SIZE];
+    RID rid;
+    RM_ScanIterator tableIt;
+    //std::vector<string> projectedAttr = {attributeName};
+    vector<string> projectedAttr;
+    projectedAttr.push_back(attributeName);
+    scan(tableName, "", NO_OP, NULL, projectedAttr, tableIt);
+
+    IXFileHandle ixFileHandle;
+	rc = IndexManager::instance().openFile(indexFileName, ixFileHandle);
+	if(rc != 0) {
+		IndexManager::instance().closeFile(ixFileHandle);
+		tableIt.close();
+		return -1;
+	}
+
+    while(tableIt.getNextTuple(rid,page) != RBFM_EOF){
+        byte *cur = page;
+        //NO_OP returns also nulls so have to test for them, and it can be tested with null indicators.
+        unsigned nullFieldLen = ceil(projectedAttr.size()/8.0);
+        if(!(*cur)){
+            cur += nullFieldLen;
+
+            //cout<<"Insert entry..."<<endl;
+            rc = IndexManager::instance().insertEntry(ixFileHandle, attr, cur, rid);
+            if(rc != 0) {
+                IndexManager::instance().closeFile(ixFileHandle);
+                tableIt.close();
+                return -1;
+            }
+        }
+    }
+	//cout<<"File "<<indexFileName<<" page number:"<<ixFileHandle.getNumberOfPages()<<endl;
+    rc = IndexManager::instance().closeFile(ixFileHandle);
+	if(rc != 0) {
+		tableIt.close();
+		return -1;
+	}
+
+    return tableIt.close();
+}
+
+/*
+ * RETURN CODES:
+ * 0  - at least one index deleted
+ * -1 - indexes for this table on the given attributes haven't been found
+ * -2 - internal error
+ */
+RC RelationManager::destroyIndex(const std::string &tableName, const std::string &attributeName) {
+    int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return -2;
+    }
+    return destroyIndexes(tableID, std::set<std::string>{attributeName});
+}
+
+/*
+ * RETURN CODES:
+ * 0  - at least one index deleted
+ * -1 - indexes for this table on the given attributes haven't been found
+ * -2 - internal error
+ */
+RC RelationManager::destroyIndexes(const unsigned &tableID, const std::set<std::string> &attributeNames) {
+    map<string, IndexAttributeInfo> indexAttributes;
+    if(processIndexesForTable(tableID, attributeNames, indexAttributes) != 0) {
+        return -2;
+    }
+
+    bool atLeastOneDeleted = false;
+    for(map<string, IndexAttributeInfo>::iterator it = indexAttributes.begin() ; it != indexAttributes.end() ; ++it) {
+        if(IndexManager::instance().destroyFile(it->second.filename) != 0) {
+            return -2;
+        }
+        modifySystemTable_AdminRequest = true;
+        if(deleteTuple("Indexes", it->second.rid) != 0) {
+            return -2;
+        }
+        modifySystemTable_AdminRequest = false;
+        atLeastOneDeleted = true;
+    }
+
+    return atLeastOneDeleted ? 0 : -1;
+}
+
+RC RelationManager::indexScan(const std::string &tableName,
+                              const std::string &attributeName,
+                              const void *lowKey,
+                              const void *highKey,
+                              bool lowKeyInclusive,
+                              bool highKeyInclusive,
+                              RM_IndexScanIterator &rm_IndexScanIterator) {
+    int tableID = getIdFromTableName(tableName);
+    if(tableID < 1) {
+        return -1;
+    }
+    map<string, IndexAttributeInfo> attributes;
+    RC rc = processIndexesForTable(tableID, set<string>{attributeName}, attributes);
+    if(rc != 0 || attributes.find(attributeName) == attributes.end()) {
+        return -1;
+    }
+
+    IXFileHandle ixFileHandle;
+    rc = IndexManager::instance().openFile(attributes[attributeName].filename, ixFileHandle);
+    if(rc != 0) {
+        return -1;
+    }
+
+    std::vector<Attribute> attrs;
+    rc = getAttributes(tableName, attrs);
+    if(rc != 0) {
+        return -1;
+    }
+    Attribute attr;
+    for(int i = 0 ; i < attrs.size() ; ++i) {
+        if(attrs[i].name == attributeName) {
+            attr = attrs[i];
+        }
+    }
+
+    rc = IndexManager::instance().scan(ixFileHandle, attr, lowKey, highKey, lowKeyInclusive, highKeyInclusive, rm_IndexScanIterator.getIxScanIterator());
+    return rc;
+}

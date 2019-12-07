@@ -994,7 +994,7 @@ RC IndexManager::scan(IXFileHandle &ixFileHandle,
     if(!ixFileHandle.isValid()) {
         return -1;
     }
-    ix_ScanIterator.setIxFileHandle(&ixFileHandle);
+    ix_ScanIterator.setIxFileHandle(ixFileHandle);
     ix_ScanIterator.setAttribute(attribute);
 
     dataEntry lowKeyEntry;
@@ -1136,7 +1136,7 @@ IX_ScanIterator::~IX_ScanIterator() {
 RC IX_ScanIterator::determineInitialPageAndOffset() {
     RC rc;
     if(lowKeyInfinity) {
-        rc = findFirstLeafPage(*ixFileHandle, currPage);
+        rc = findFirstLeafPage(ixFileHandle, currPage);
         if(rc != 0) {
             return rc;
         }
@@ -1148,7 +1148,7 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     	 * readRootPointer() is moved to here and the originally overload function searchIndexTree()
     	 * (the one without the second page number parameter) is deleted for simplification.
     	 */
-        rc = IndexManager::instance().searchIndexTree(*ixFileHandle,ixFileHandle->rootPage,attribute,lowKeyInclusive,lowKeyEntry, currPage);
+        rc = IndexManager::instance().searchIndexTree(ixFileHandle,ixFileHandle.rootPage,attribute,lowKeyInclusive,lowKeyEntry, currPage);
         //cout<<"Page number of data entry page to begin scan:"<<currPage<<endl;
         if(rc != 0) {
             return rc;
@@ -1156,13 +1156,13 @@ RC IX_ScanIterator::determineInitialPageAndOffset() {
     }
 
     char page[PAGE_SIZE];
-    rc = ixFileHandle->readPage(currPage,page);
+    rc = ixFileHandle.readPage(currPage,page);
     if(rc != 0) {
         return rc;
     }
     unsigned currentFreeSpaceOffset = *reinterpret_cast<unsigned *>(page+PAGE_SIZE-sizeof(unsigned));
 
-    rc = IndexManager::instance().searchEntry(*ixFileHandle, attribute, lowKeyEntry, lowKeyInclusive, page, currOffset);
+    rc = IndexManager::instance().searchEntry(ixFileHandle, attribute, lowKeyEntry, lowKeyInclusive, page, currOffset);
     if(rc != 0) {
         return rc;
     }
@@ -1250,7 +1250,7 @@ RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
     //-----------------------------------------------------------------------------------------------------------
 
     char page[PAGE_SIZE];
-    RC rc = ixFileHandle->readPage(currPage,page);
+    RC rc = ixFileHandle.readPage(currPage,page);
     if(rc != 0) {
         return rc;
     }
@@ -1302,11 +1302,11 @@ RC IX_ScanIterator::close() {
     return 0; //Who designed this twisted API!?
 }
 
-const IXFileHandle* IX_ScanIterator::getIxFileHandle() const {
+const IXFileHandle& IX_ScanIterator::getIxFileHandle() const {
     return ixFileHandle;
 }
 
-void IX_ScanIterator::setIxFileHandle(IXFileHandle* ixFileHandle) {
+void IX_ScanIterator::setIxFileHandle(IXFileHandle& ixFileHandle) {
     this->ixFileHandle = ixFileHandle;
 }
 
@@ -1400,6 +1400,7 @@ RC IXFileHandle::readPage(PageNum pageNum, void *data){
 		return -1;
 
 	ixReadPageCounter++;
+    flushCountersToDisk();
 	return 0;
 }
 
@@ -1418,6 +1419,7 @@ RC IXFileHandle::writePage(PageNum pageNum, const void *data){
 		return -1;
 
 	ixWritePageCounter++;
+    flushCountersToDisk();
 	return 0;
 }
 
@@ -1430,10 +1432,29 @@ RC IXFileHandle::appendPage(const void *data){
 
 	noPages++;
 	ixAppendPageCounter++;
+    flushCountersToDisk();
 	return 0;
 }
 
+void IXFileHandle::flushCountersToDisk()  {
+    fseek(fp, 0, SEEK_SET);
+    unsigned cnt[5];
+    cnt[0] = ixReadPageCounter;
+    cnt[1] = ixWritePageCounter;
+    cnt[2] = ixAppendPageCounter;
+    cnt[3] = noPages;
+    cnt[4] = rootPage;
+    fwrite(cnt,sizeof(unsigned),5,fp);
+}
+
 RC IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount) {
+    unsigned cnt[3];
+    fseek(fp,0,SEEK_SET);
+    fread(cnt,sizeof(unsigned),3,fp);
+    ixReadPageCounter = cnt[0];
+    ixWritePageCounter =  cnt[1];
+    ixAppendPageCounter = cnt[2];
+
     readPageCount = ixReadPageCounter;
     writePageCount = ixWritePageCounter;
     appendPageCount = ixAppendPageCounter;

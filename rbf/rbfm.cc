@@ -73,7 +73,6 @@ void RecordBasedFileManager::transformDataToRecordFormat(const std::vector<Attri
 
     for(unsigned i = 0 ; i < recordDescriptor.size() ; ++i) {
         const byte* byteInNullInfoField = reinterpret_cast<const byte*>(data) + i/8;
-
         bool nullField = *byteInNullInfoField & (1 << 7-i%8);
         if(nullField) {
             fieldOffsets[i+1] = fieldOffsets[i];
@@ -529,9 +528,10 @@ RC RecordBasedFileManager::scan(FileHandle &fileHandle,
     rbfm_ScanIterator.setConditionAttribute(conditionAttribute);
     rbfm_ScanIterator.setCompOp(compOp);
     rbfm_ScanIterator.setValue(value);
+    rbfm_ScanIterator.setCurrRID();
 
     //some preprocessing
-    std::map<string,int> namesToPos;
+    std::map<string,unsigned> namesToPos;
     for(int i = 0 ; i < recordDescriptor.size() ; ++i) {
         namesToPos[recordDescriptor[i].name] = i;
         if (recordDescriptor[i].name == conditionAttribute) {

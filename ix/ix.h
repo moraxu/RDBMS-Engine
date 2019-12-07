@@ -3,7 +3,7 @@
 
 #include <vector>
 #include <string>
-#include <stdio.h>
+#include <cstdio>
 
 #include "../rbf/rbfm.h"
 
@@ -114,10 +114,13 @@ public:
     RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
 
     unsigned getNumberOfPages() {return noPages;}
+
+private:
+    void flushCountersToDisk();
 };
 
 class IX_ScanIterator {
-    IXFileHandle* ixFileHandle;
+    IXFileHandle ixFileHandle;
     Attribute attribute;
     //These data entry objects contain the value from lowKey/highKey - so that we don't have to cast every time
     dataEntry lowKeyEntry;
@@ -146,9 +149,9 @@ class IX_ScanIterator {
     void transformDataEntryKey(dataEntry dataEnt, void* key) const;
 
 public:
-    const IXFileHandle* getIxFileHandle() const;
+    const IXFileHandle& getIxFileHandle() const;
 
-    void setIxFileHandle(IXFileHandle* ixFileHandle);
+    void setIxFileHandle(IXFileHandle& ixFileHandle);
 
     const Attribute &getAttribute() const;
 
