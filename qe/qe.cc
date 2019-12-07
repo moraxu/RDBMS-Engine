@@ -208,8 +208,6 @@ BNLJoin::BNLJoin(Iterator *leftIn,TableScan *rightIn,const Condition &condition,
 }
 
 BNLJoin::~BNLJoin(){
-	//free(leftTable);
-	//free(rightTable);
 	delete [] leftTable;
 	delete [] rightTable;
 }
@@ -431,38 +429,45 @@ bool BNLJoin::BNLJoinMatch(unsigned &leftTupleLen,unsigned &rightTupleLen){
 	return res;
 }
 
-void BNLJoin::BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned rightTupleLen){
-	unsigned leftNullField = ceil(leftAttrs.size()/8.0);
-	unsigned rightNullField = ceil(rightAttrs.size()/8.0);
-	unsigned nullField = ceil((leftAttrs.size()+rightAttrs.size())/8.0); // Null field length of joined tuple
-	memset((char *)data, 0, nullField);
-	char *cur = (char *)data;
-	unsigned resultFieldNo = 0;
+void BNLJoin::BNLJoinTuple(void *data){
+    unsigned nullInfoFieldLength = static_cast<unsigned>(ceil((leftAttrs.size()+rightAttrs.size())/8.0));
+    vector<byte> result(nullInfoFieldLength, 0);
 
-	for(unsigned i = 0 ; i < leftAttrs.size() ; ++i, ++resultFieldNo) {
-		const byte *byteInNullInfoField = reinterpret_cast<const byte*>(leftTable+currLOffset) + i / 8;
+    const char* records[2] = { leftTable+currLOffset, rightTable+currROffset };
 
-		bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
-		if (nullField) {
-			unsigned noOfByteInNullInfoField = resultFieldNo/8;
-			cur[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
-		}
-	}
+    const byte* actualData[2];
+    nullInfoFieldLength = static_cast<unsigned>(ceil(leftAttrs.size()/8.0));
+    actualData[0] = reinterpret_cast<const byte*>(records[0]) + nullInfoFieldLength;
+    nullInfoFieldLength = static_cast<unsigned>(ceil(rightAttrs.size()/8.0));
+    actualData[1] = reinterpret_cast<const byte*>(records[1]) + nullInfoFieldLength;
 
-	for(unsigned i = 0 ; i < rightAttrs.size() ; ++i, ++resultFieldNo) {
-		const byte *byteInNullInfoField = reinterpret_cast<const byte*>(rightTable+currROffset) + i / 8;
+    //array of pointers in order to avoid copying two vectors
+    const std::vector<Attribute>* attributes[2] = { &leftAttrs, &rightAttrs };
 
-		bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
-		if (nullField) {
-			unsigned noOfByteInNullInfoField = resultFieldNo/8;
-			cur[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
-		}
-	}
+    for(unsigned record = 0, resultFieldNo = 0 ; record < 2 ; ++record) {
+        for(unsigned i = 0 ; i < attributes[record]->size() ; ++i, ++resultFieldNo) {
+            const byte *byteInNullInfoField = reinterpret_cast<const byte*>(records[record]) + i / 8;
 
-	cur += nullField;
-	memcpy(cur, leftTable+currLOffset+leftNullField, leftTupleLen-leftNullField);
-	cur += leftTupleLen-leftNullField;
-	memcpy(cur, rightTable+currROffset+rightNullField, rightTupleLen-rightNullField);
+            bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+            if (!nullField) {
+                if ((*attributes[record])[i].type == AttrType::TypeInt || (*attributes[record])[i].type == AttrType::TypeReal) {
+                    result.insert(result.end(), actualData[record], actualData[record] + (*attributes[record])[i].length);
+
+                    actualData[record] += (*attributes[record])[i].length;
+                } else { //type == AttrType::TypeVarChar
+                    unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData[record]);
+                    result.insert(result.end(), actualData[record], actualData[record] + 4 + varCharLength);
+
+                    actualData[record] += (4 + varCharLength);
+                }
+            }
+            else {
+                unsigned noOfByteInNullInfoField = resultFieldNo/8;
+                result[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
+            }
+        }
+    }
+    memcpy(data, result.data(), result.size());
 }
 
 RC BNLJoin::getNextTuple(void *data){
@@ -483,7 +488,7 @@ RC BNLJoin::getNextTuple(void *data){
 		}
 	}
 
-	BNLJoinTuple(data,leftTupleLen,rightTupleLen);
+	BNLJoinTuple(data);
 	int rc = moveToNextMatchingPairs(leftTupleLen, rightTupleLen);
 	if(rc != 0)
 		endOfFile = true;

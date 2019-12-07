@@ -289,7 +289,7 @@ public:
 
     bool BNLJoinMatch(unsigned &leftTupleLen,unsigned &rightTupleLen);
 
-    void BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned rightTupleLen);
+    void BNLJoinTuple(void *data);
 
     RC getNextTuple(void *data) override;
 
