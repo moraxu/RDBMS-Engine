@@ -202,8 +202,8 @@ BNLJoin::BNLJoin(Iterator *leftIn,TableScan *rightIn,const Condition &condition,
 }
 
 BNLJoin::~BNLJoin(){
-	delete leftTable;
-	delete rightTable;
+	free(leftTable);
+    free(rightTable);
 }
 
 /*
@@ -426,38 +426,45 @@ bool BNLJoin::BNLJoinMatch(unsigned &leftTupleLen,unsigned &rightTupleLen){
 	}*/
 }
 
-void BNLJoin::BNLJoinTuple(void *data,const unsigned leftTupleLen,const unsigned rightTupleLen){
-	unsigned leftNullField = ceil(leftAttrs.size()/8.0);
-	unsigned rightNullField = ceil(rightAttrs.size()/8.0);
-	unsigned nullField = ceil((leftAttrs.size()+rightAttrs.size())/8.0); // Null field length of joined tuple
-	char *cur = (char *)data;
-	unsigned shiftBits = leftNullField*8-leftAttrs.size();
-	memcpy(cur, leftTable+currLOffset, leftNullField);
-	cur += leftNullField;
-	memcpy(cur, rightTable+currROffset, rightNullField);
-	/*
-	 * Now our task is to merge these two null fields in the scale of bits.
-	 * shiftBits gives the number of bits that right null field should (left)shift with.
-	 * But I'm not sure how to implement it.
-	 * */
-	char firstByte = *(rightTable+currROffset);
-	char mask = 0;
-	for(int i = 8-shiftBits;i < 8;i++)
-		mask += pow(2,i);
-	firstByte &= mask;
-	firstByte >>= shiftBits;
-	*(cur-1) |= firstByte;
-	for(int i = shiftBits;i < rightAttrs.size();i++){
-		const char* rightNullPointer = rightTable+currROffset + i/8;
-		bool nullField = *rightNullPointer & (1 << 7-i%8);
-		if(nullField)
-			*(cur+(i-shiftBits)/8) |= (1 << 7-(i+shiftBits)%8);
-	}
+void BNLJoin::BNLJoinTuple(void *data){
+    unsigned nullInfoFieldLength = static_cast<unsigned>(ceil((leftAttrs.size()+rightAttrs.size())/8.0));
+    vector<byte> result(nullInfoFieldLength, 0);
 
-	cur = (char *)data+nullField;
-	memcpy(cur, leftTable+currLOffset+leftNullField, leftTupleLen-leftNullField);
-	cur += leftTupleLen-leftNullField;
-	memcpy(cur, rightTable+currROffset+rightNullField, rightTupleLen-rightNullField);
+    const char* records[2] = { leftTable+currLOffset, rightTable+currROffset };
+
+    const byte* actualData[2];
+    nullInfoFieldLength = static_cast<unsigned>(ceil(leftAttrs.size()/8.0));
+    actualData[0] = reinterpret_cast<const byte*>(records[0]) + nullInfoFieldLength;
+    nullInfoFieldLength = static_cast<unsigned>(ceil(rightAttrs.size()/8.0));
+    actualData[1] = reinterpret_cast<const byte*>(records[1]) + nullInfoFieldLength;
+
+    //array of pointers in order to avoid copying two vectors
+    const std::vector<Attribute>* attributes[2] = { &leftAttrs, &rightAttrs };
+
+    for(unsigned record = 0, resultFieldNo = 0 ; record < 2 ; ++record) {
+        for(unsigned i = 0 ; i < attributes[record]->size() ; ++i, ++resultFieldNo) {
+            const byte *byteInNullInfoField = reinterpret_cast<const byte*>(records[record]) + i / 8;
+
+            bool nullField = *byteInNullInfoField & (1 << 7 - i % 8);
+            if (!nullField) {
+                if ((*attributes[record])[i].type == AttrType::TypeInt || (*attributes[record])[i].type == AttrType::TypeReal) {
+                    result.insert(result.end(), actualData[record], actualData[record] + (*attributes[record])[i].length);
+
+                    actualData[record] += (*attributes[record])[i].length;
+                } else { //type == AttrType::TypeVarChar
+                    unsigned varCharLength = *reinterpret_cast<const unsigned *>(actualData[record]);
+                    result.insert(result.end(), actualData[record], actualData[record] + 4 + varCharLength);
+
+                    actualData[record] += (4 + varCharLength);
+                }
+            }
+            else {
+                unsigned noOfByteInNullInfoField = resultFieldNo/8;
+                result[noOfByteInNullInfoField] |= (1 << 7-resultFieldNo%8);
+            }
+        }
+    }
+    memcpy(data, result.data(), result.size());
 }
 
 RC BNLJoin::getNextTuple(void *data){
@@ -470,7 +477,7 @@ RC BNLJoin::getNextTuple(void *data){
 			return QE_EOF;
 	}
 
-	BNLJoinTuple(data,leftTupleLen,rightTupleLen);
+	BNLJoinTuple(data);
 	int rc = moveToNextMatchingPairs(leftTupleLen, rightTupleLen);
 	if(rc != 0)
 		endOfFile = true;
