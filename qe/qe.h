@@ -295,18 +295,32 @@ public:
 
 class INLJoin : public Iterator {
     // Index nested-loop join operator
+    RelationManager& rm;
+    RM_ScanIterator iter;
+    Iterator *left;
+    IndexScan *right;
+    string tempTableName;
+    vector<Attribute> leftAttrs;
+    vector<Attribute> rightAttrs;
+    vector<Attribute> attrs;
+
+    RC extractField(const byte* record, const std::vector<Attribute> &attrs, const string& fieldToExtract, std::vector<byte>& extractedField);
+    void concatenateRecords(const byte* firstRecord, const std::vector<Attribute> &firstRecordAttrs,
+                            const byte* secondRecord, const std::vector<Attribute> &secondRecordAttrs,
+                            std::vector<byte>& result);
+
 public:
     INLJoin(Iterator *leftIn,           // Iterator of input R
             IndexScan *rightIn,          // IndexScan Iterator of input S
             const Condition &condition   // Join condition
-    ) {};
+    );
 
-    ~INLJoin() override = default;
+    ~INLJoin() override;
 
-    RC getNextTuple(void *data) override { return QE_EOF; };
+    RC getNextTuple(void *data) override;
 
     // For attribute in std::vector<Attribute>, name it as rel.attr
-    void getAttributes(std::vector<Attribute> &attrs) const override {};
+    void getAttributes(std::vector<Attribute> &attrs) const override;
 };
 
 // Optional for everyone. 10 extra-credit points
@@ -334,6 +348,7 @@ class Aggregate : public Iterator {
 	AggregateOp op;
 	vector<Attribute> attributes;
 	bool scanned;
+
 public:
     // Mandatory
     // Basic aggregation
